@@ -267,11 +267,11 @@ Intent Guidelines:
 - If the user wants to save or record a Fabric Card (e.g. "save this fabric", "create fabric card"): call the 'create_fabric_card' tool.
 - For fashion history, fabric queries, greetings, or explanations: answer with plain text, using Google Search grounding to retrieve real citations where appropriate.`;
 
-    // Intent Classification using a fast model (gemini-2.5-flash) to avoid API tool clashes
+    // Intent Classification using a fast model (gemini-3.5-flash) to avoid API tool clashes
     let intent = 'SEARCH';
     try {
       const classificationResponse = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
+        model: 'gemini-3.5-flash',
         contents: [
           {
             role: 'user',
