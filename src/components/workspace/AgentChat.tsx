@@ -8,20 +8,29 @@ import {
   Sparkles, 
   Loader2, 
   Send,
-  Shirt
+  Shirt,
+  Paperclip,
+  X
 } from "lucide-react"
 import { useStudioStore, ChatMessage, GarmentCard } from "@/lib/store"
 import { translations } from "@/lib/translations"
+import { createClient } from "@/lib/supabase/client"
 
 export default function AgentChat() {
   const { id: projectId } = useParams() as { id: string }
+  const supabase = createClient()
 
   // Store state
   const {
     activeStyleDnaId,
+    setActiveStyleDnaId,
     activeFabricCardId,
+    setActiveFabricCardId,
     setActiveGarment,
     addGarmentCard,
+    addStyleDna,
+    addFabricCard,
+    garmentCards,
     messages,
     setMessages,
     addMessage,
@@ -36,6 +45,8 @@ export default function AgentChat() {
 
   // Local UI state
   const [chatInput, setChatInput] = useState("")
+  const [attachedUrls, setAttachedUrls] = useState<string[]>([])
+  const [uploadingAttachment, setUploadingAttachment] = useState(false)
   const chatEndRef = useRef<HTMLDivElement>(null)
 
   // Auto-scroll chat
@@ -43,18 +54,55 @@ export default function AgentChat() {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
-  // Sync initial welcome message if empty
+  // Load chat history from Supabase on mount
   useEffect(() => {
-    if (messages.length === 0) {
-      setMessages([
-        {
-          id: 'welcome',
-          role: 'agent',
-          text: translations[language].agentIntro
+    async function loadChatHistory() {
+      try {
+        const { data, error } = await supabase
+          .from('chat_messages')
+          .select('*')
+          .eq('project_id', projectId)
+          .order('created_at', { ascending: true })
+
+        if (error) throw error
+
+        if (data && data.length > 0) {
+          const chatMsgs = data.map((msg: any) => {
+            // Find related garment card from Zustand store if associated
+            const gCard = msg.garment_card_id 
+              ? useStudioStore.getState().garmentCards.find(g => g.id === msg.garment_card_id)
+              : undefined
+
+            return {
+              id: msg.id,
+              role: msg.role as 'agent' | 'user',
+              text: msg.text || '',
+              garmentCard: gCard,
+              garment_card_id: msg.garment_card_id || undefined,
+              image_urls: msg.image_urls || [],
+              grounding_metadata: msg.grounding_metadata || undefined
+            }
+          })
+          setMessages(chatMsgs)
+        } else {
+          // Fallback welcome message
+          setMessages([
+            {
+              id: 'welcome',
+              role: 'agent',
+              text: translations[language].agentIntro
+            }
+          ])
         }
-      ])
+      } catch (err) {
+        console.error("Failed to load chat history", err)
+      }
     }
-  }, [language, messages.length, setMessages])
+
+    if (projectId) {
+      loadChatHistory()
+    }
+  }, [projectId, supabase, setMessages, language, garmentCards])
 
   // Handle Design Agent Request
   const handleSendPrompt = async (e: React.FormEvent) => {
@@ -62,12 +110,20 @@ export default function AgentChat() {
     if (!chatInput.trim() || chatLoading) return
 
     const promptText = chatInput
+    const currentAttachments = [...attachedUrls]
+    
     setChatInput("")
+    setAttachedUrls([])
     setChatLoading(true)
 
     // Add user message
     const userMsgId = Date.now().toString()
-    addMessage({ id: userMsgId, role: 'user', text: promptText })
+    addMessage({ 
+      id: userMsgId, 
+      role: 'user', 
+      text: promptText,
+      image_urls: currentAttachments
+    })
 
     // Add agent thinking placeholder
     const agentMsgId = (Date.now() + 1).toString()
@@ -75,8 +131,8 @@ export default function AgentChat() {
       id: agentMsgId, 
       role: 'agent', 
       text: language === 'zh' 
-        ? '正在处理您的指令，提取风格与面料特征并调用画质渲染模型。请稍候，这大约需要 10-15 秒...' 
-        : 'Processing your prompt, synthesizing styles, and calling image rendering models. Please wait, this may take 10-15 seconds...',
+        ? '正在处理您的指令，结合上下文和风格特征进行智能决策。请稍候...' 
+        : 'Processing your request and checking constraints. Please wait...',
       loading: true
     })
 
@@ -90,7 +146,8 @@ export default function AgentChat() {
           fabricCardId: activeFabricCardId || undefined,
           projectId,
           displayMode,
-          imageGenModel
+          imageGenModel,
+          imageUrls: currentAttachments
         })
       })
 
@@ -99,25 +156,60 @@ export default function AgentChat() {
         throw new Error(result.error || "Generation request failed.")
       }
 
-      const generatedGarment = result.data as GarmentCard
-      
-      // Update state and active view
-      addGarmentCard(generatedGarment)
-      setActiveGarment(generatedGarment)
-
-      // Update agent message
+      const resData = result.data
       const updated = [...messages]
       const index = updated.findIndex(m => m.id === agentMsgId)
+
       if (index !== -1) {
-        const introText = language === 'zh' 
-          ? `我已为您生成了 "${generatedGarment.title}" 的设计款式卡。以下是设计原理：`
-          : `I have generated the design card for "${generatedGarment.title}". Here is the design rationale:`;
-        updated[index] = {
-          id: agentMsgId,
-          role: 'agent',
-          text: `${introText}\n\n${generatedGarment.design_rationale}`,
-          garmentCard: generatedGarment,
-          loading: false
+        if (resData.isToolCalled) {
+          if (resData.garmentCard) {
+            // Tool generate_garment_design was called
+            const gCard = resData.garmentCard as GarmentCard
+            addGarmentCard(gCard)
+            setActiveGarment(gCard)
+            
+            updated[index] = {
+              id: agentMsgId,
+              role: 'agent',
+              text: resData.replyText,
+              garmentCard: gCard,
+              garment_card_id: gCard.id,
+              loading: false
+            }
+          } else if (resData.createdStyleDna) {
+            // Tool create_style_dna was called
+            const sDna = resData.createdStyleDna
+            addStyleDna(sDna)
+            setActiveStyleDnaId(sDna.id)
+
+            updated[index] = {
+              id: agentMsgId,
+              role: 'agent',
+              text: resData.replyText,
+              loading: false
+            }
+          } else if (resData.createdFabricCard) {
+            // Tool create_fabric_card was called
+            const fCard = resData.createdFabricCard
+            addFabricCard(fCard)
+            setActiveFabricCardId(fCard.id)
+
+            updated[index] = {
+              id: agentMsgId,
+              role: 'agent',
+              text: resData.replyText,
+              loading: false
+            }
+          }
+        } else {
+          // General text reply / search grounding
+          updated[index] = {
+            id: agentMsgId,
+            role: 'agent',
+            text: resData.replyText,
+            grounding_metadata: resData.groundingMetadata || undefined,
+            loading: false
+          }
         }
       }
       setMessages(updated)
@@ -131,7 +223,7 @@ export default function AgentChat() {
           id: agentMsgId,
           role: 'agent',
           error: true,
-          text: `${language === 'zh' ? '设计生成失败：' : 'Failed to generate design: '}${err.message || "An unexpected error occurred."}`,
+          text: `${language === 'zh' ? '设计助手执行失败：' : 'Agent failed: '}${err.message || "An unexpected error occurred."}`,
           loading: false
         }
       }
@@ -152,47 +244,170 @@ export default function AgentChat() {
       </div>
       
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
-        {messages.map((msg) => (
-          <div 
-            key={msg.id} 
-            className={`rounded-lg p-3 text-sm ${
-              msg.role === 'user' 
-                ? 'bg-primary/10 border border-primary/20 ml-8 text-foreground' 
-                : msg.error 
-                  ? 'bg-destructive/15 border border-destructive/20 mr-8 text-destructive'
-                  : 'bg-muted/50 border border-border mr-8 text-foreground'
-            }`}
-          >
-            <p className="font-semibold text-xs mb-1 uppercase tracking-wide opacity-80">
-              {msg.role === 'user' ? (language === 'zh' ? '设计师' : 'Designer') : (language === 'zh' ? '设计 Agent' : 'Agent')}
-            </p>
-            <p className="leading-relaxed whitespace-pre-line text-xs">{msg.text}</p>
-            
-            {msg.loading && (
-              <div className="flex items-center space-x-2 mt-3 text-xs text-muted-foreground animate-pulse">
-                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                <span>{t.aiGeneratingHelp}</span>
-              </div>
-            )}
+        {messages.map((msg) => {
+          const groundingChunks = msg.grounding_metadata?.groundingChunks || []
+          const sources = groundingChunks.map((chunk: any) => {
+            const web = chunk.web || chunk
+            return {
+              title: web.title || web.uri || "Source Link",
+              uri: web.uri
+            }
+          }).filter((s: any) => s.uri)
 
-            {msg.garmentCard && (
-              <Button 
-                size="sm" 
-                variant="outline" 
-                onClick={() => setActiveGarment(msg.garmentCard!)}
-                className="mt-3 w-full justify-start text-xs border-primary/20 hover:bg-primary/5"
-              >
-                <Shirt className="w-3.5 h-3.5 mr-2 text-primary" />
-                {t.viewSpecBtn}
-              </Button>
-            )}
-          </div>
-        ))}
+          return (
+            <div 
+              key={msg.id} 
+              className={`rounded-lg p-3 text-sm ${
+                msg.role === 'user' 
+                  ? 'bg-primary/10 border border-primary/20 ml-8 text-foreground' 
+                  : msg.error 
+                    ? 'bg-destructive/15 border border-destructive/20 mr-8 text-destructive'
+                    : 'bg-muted/50 border border-border mr-8 text-foreground'
+              }`}
+            >
+              <p className="font-semibold text-xs mb-1 uppercase tracking-wide opacity-80">
+                {msg.role === 'user' ? (language === 'zh' ? '设计师' : 'Designer') : (language === 'zh' ? '设计 Agent' : 'Agent')}
+              </p>
+              
+              <p className="leading-relaxed whitespace-pre-line text-xs">{msg.text}</p>
+              
+              {/* Multimodal user uploaded image attachment list */}
+              {msg.image_urls && msg.image_urls.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 mt-2">
+                  {msg.image_urls.map((url, uidx) => (
+                    <a 
+                      key={uidx} 
+                      href={url} 
+                      target="_blank" 
+                      rel="noopener noreferrer" 
+                      className="w-16 h-16 rounded-md border border-border overflow-hidden bg-background hover:opacity-80 transition-opacity block shrink-0"
+                    >
+                      <img src={url} alt="attached attachment" className="w-full h-full object-cover" />
+                    </a>
+                  ))}
+                </div>
+              )}
+
+              {/* Citations section for search grounding */}
+              {sources.length > 0 && (
+                <div className="mt-3 pt-2 border-t border-border/50 text-[10px] text-muted-foreground space-y-1">
+                  <div className="font-semibold uppercase tracking-wider text-[9px] text-muted-foreground/80">{language === 'zh' ? '参考引用' : 'Sources'}</div>
+                  <ul className="grid grid-cols-1 gap-1">
+                    {sources.map((src: any, idx: number) => (
+                      <li key={idx} className="truncate">
+                        <a 
+                          href={src.uri} 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="text-primary hover:underline inline-flex items-center gap-1 truncate max-w-full"
+                        >
+                          <span className="bg-primary/10 text-primary px-1 rounded mr-0.5 shrink-0 text-[9px] font-mono">[{idx + 1}]</span>
+                          <span className="truncate flex-1">{src.title}</span>
+                        </a>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              
+              {msg.loading && (
+                <div className="flex items-center space-x-2 mt-3 text-xs text-muted-foreground animate-pulse">
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  <span>{t.aiGeneratingHelp}</span>
+                </div>
+              )}
+
+              {msg.garmentCard && (
+                <Button 
+                  size="sm" 
+                  variant="outline" 
+                  onClick={() => setActiveGarment(msg.garmentCard!)}
+                  className="mt-3 w-full justify-start text-xs border-primary/20 hover:bg-primary/5"
+                >
+                  <Shirt className="w-3.5 h-3.5 mr-2 text-primary" />
+                  {t.viewSpecBtn}
+                </Button>
+              )}
+            </div>
+          )
+        })}
         <div ref={chatEndRef} />
       </div>
 
       <div className="p-4 border-t border-border bg-background">
-        <form onSubmit={handleSendPrompt} className="flex space-x-2">
+        {/* Active attachment preview zone */}
+        {attachedUrls.length > 0 && (
+          <div className="flex flex-wrap gap-2 mb-2 p-2 bg-muted/30 border border-border/50 rounded-lg max-h-24 overflow-y-auto">
+            {attachedUrls.map((url, idx) => (
+              <div key={idx} className="relative group w-12 h-12 rounded border border-border overflow-hidden bg-card shrink-0">
+                <img src={url} alt="attachment preview" className="w-full h-full object-cover" />
+                <button
+                  type="button"
+                  onClick={() => setAttachedUrls(prev => prev.filter((_, i) => i !== idx))}
+                  className="absolute top-0 right-0 bg-destructive text-destructive-foreground p-0.5 rounded-bl opacity-0 group-hover:opacity-100 transition-opacity"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <form onSubmit={handleSendPrompt} className="flex space-x-2 items-center">
+          {/* File upload selector and triggers */}
+          <input 
+            type="file" 
+            id="chat-file-input" 
+            multiple 
+            accept="image/*" 
+            className="hidden" 
+            onChange={async (e) => {
+              const files = e.target.files
+              if (!files || files.length === 0) return
+              setUploadingAttachment(true)
+              try {
+                const { data: { user } } = await supabase.auth.getUser()
+                if (!user) throw new Error("No authenticated user session")
+                
+                const newUrls: string[] = []
+                for (let i = 0; i < files.length; i++) {
+                  const file = files[i]
+                  const fileExt = file.name.split('.').pop()
+                  const fileName = `${user.id}/chat_attachments/${Date.now()}_${Math.random().toString(36).substring(2, 9)}.${fileExt}`
+                  
+                  const { error: uploadError } = await supabase.storage
+                    .from('design_assets')
+                    .upload(fileName, file, {
+                      cacheControl: '3600',
+                      upsert: true
+                    })
+                  if (uploadError) throw uploadError
+                  
+                  const { data: { publicUrl } } = supabase.storage
+                    .from('design_assets')
+                    .getPublicUrl(fileName)
+                  newUrls.push(publicUrl)
+                }
+                setAttachedUrls(prev => [...prev, ...newUrls])
+              } catch (err) {
+                console.error("Failed to upload attachment", err)
+              } finally {
+                setUploadingAttachment(false)
+              }
+            }} 
+            disabled={uploadingAttachment || chatLoading}
+          />
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            disabled={uploadingAttachment || chatLoading}
+            onClick={() => document.getElementById('chat-file-input')?.click()}
+            className="shrink-0 text-muted-foreground hover:text-foreground h-9 w-9"
+          >
+            {uploadingAttachment ? <Loader2 className="w-4 h-4 animate-spin text-primary" /> : <Paperclip className="w-4 h-4" />}
+          </Button>
+
           <Input 
             value={chatInput}
             onChange={(e) => setChatInput(e.target.value)}

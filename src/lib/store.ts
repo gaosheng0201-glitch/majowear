@@ -59,6 +59,9 @@ export interface ChatMessage {
   role: 'agent' | 'user'
   text: string
   garmentCard?: GarmentCard
+  garment_card_id?: string
+  image_urls?: string[]
+  grounding_metadata?: any
   loading?: boolean
   error?: boolean
 }

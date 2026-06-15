@@ -3,42 +3,94 @@ import { ai } from '@/lib/gemini';
 import { createClient } from '@/lib/supabase/server';
 import { Schema, Type } from '@google/genai';
 
-const garmentResponseSchema: Schema = {
-  type: Type.OBJECT,
-  properties: {
-    title: { type: Type.STRING, description: 'A stylish name for this specific garment design' },
-    category: { type: Type.STRING, description: 'Clothing category (e.g., Jacket, Pants, Dress, Shirt, Knitwear)' },
-    design_rationale: { type: Type.STRING, description: 'Explanation of design choices, combining the style DNA and fabric properties (written in bilingual Chinese/English)' },
-    prompt: { type: Type.STRING, description: 'Optimized English prompt for the image generation model. Describe ONLY the clothing styling, cut, and material, avoiding background details.' },
-    negative_prompt: { type: Type.STRING, description: 'Optimized English negative prompt if applicable' },
-    schema: { 
-      type: Type.OBJECT, 
-      description: 'Structured garment specifications',
-      properties: {
-        fit: { type: Type.STRING, description: 'e.g. Oversized, Slim fit, Cropped, Regular' },
-        collar: { type: Type.STRING, description: 'e.g. Hooded, Band collar, Notch lapel, Crewneck' },
-        sleeves: { type: Type.STRING, description: 'e.g. Raglan long sleeves, Sleeveless, Ribbed cuffs' },
-        pockets: { type: Type.STRING, description: 'e.g. Dual utility patch pockets, Hidden zippered seams' },
-        closures: { type: Type.STRING, description: 'e.g. Asymmetric front metal zipper, Matte resin buttons' },
-        details: { type: Type.ARRAY, items: { type: Type.STRING }, description: 'Specific design highlights like contrast topstitching, adjustable hem drawstrings, modular zippers.' },
-        review: {
-          type: Type.OBJECT,
-          description: 'AI review scoring based on constraints',
-          properties: {
-            style_match_score: { type: Type.INTEGER, description: 'Score out of 100 for style matching' },
-            fabric_match_score: { type: Type.INTEGER, description: 'Score out of 100 for fabric compatibility' },
-            structure_clarity_score: { type: Type.INTEGER, description: 'Score out of 100 for design structure clarity' },
-            prompt_compliance_score: { type: Type.INTEGER, description: 'Score out of 100 for prompt compliance' },
-            issues: { type: Type.ARRAY, items: { type: Type.STRING }, description: 'Issues identified (e.g., fabric properties conflict with details, colors outside DNA range)' },
-            suggested_revision: { type: Type.STRING, description: 'A refinement prompt suggestion (e.g., Increase ripstop texturing, add waterproof zippers)' }
-          },
-          required: ['style_match_score', 'fabric_match_score', 'structure_clarity_score', 'prompt_compliance_score', 'issues', 'suggested_revision']
-        }
-      },
-      required: ['fit', 'collar', 'sleeves', 'pockets', 'closures', 'details', 'review']
-    }
-  },
-  required: ['title', 'category', 'design_rationale', 'prompt', 'negative_prompt', 'schema']
+async function imageUrlToPart(url: string) {
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(`Failed to fetch image from URL: ${url}`);
+  }
+  const arrayBuffer = await response.arrayBuffer();
+  const mimeType = response.headers.get('content-type') || 'image/jpeg';
+  return {
+    inlineData: {
+      data: Buffer.from(arrayBuffer).toString('base64'),
+      mimeType,
+    },
+  };
+}
+
+// 1. Tool Declaration: Generate Garment Design
+const generateGarmentTool = {
+  name: 'generate_garment_design',
+  description: 'Generate a new clothing garment design or modify an existing garment to create a variant, using style DNA and fabric cards as constraints.',
+  parameters: {
+    type: Type.OBJECT,
+    properties: {
+      title: { type: Type.STRING, description: 'Descriptive title of the garment' },
+      category: { type: Type.STRING, description: 'Category of the clothing (e.g., Jacket, Pants, Shirt, Dress, Knitwear)' },
+      design_rationale: { type: Type.STRING, description: 'Explanation of design choices, matching style DNA and fabric properties' },
+      prompt: { type: Type.STRING, description: 'Optimized English prompt for the image generation model. Describe styling, fit, collar, sleeves, closure, pockets, details.' },
+      negative_prompt: { type: Type.STRING, description: 'English negative prompt' },
+      fit: { type: Type.STRING, description: 'e.g. Oversized, Slim, Cropped, Regular' },
+      collar: { type: Type.STRING, description: 'e.g. Hooded, Band collar, Notch lapel' },
+      sleeves: { type: Type.STRING, description: 'e.g. Raglan long sleeves, Sleeveless' },
+      pockets: { type: Type.STRING, description: 'e.g. Patch pockets, Zip pockets' },
+      closures: { type: Type.STRING, description: 'e.g. Front zipper, Buttons' },
+      details: { type: Type.ARRAY, items: { type: Type.STRING }, description: 'Design highlights' },
+      review_style_match_score: { type: Type.INTEGER, description: 'Score out of 100 for style matching' },
+      review_fabric_match_score: { type: Type.INTEGER, description: 'Score out of 100 for fabric compatibility' },
+      review_structure_clarity_score: { type: Type.INTEGER, description: 'Score out of 100 for design structure clarity' },
+      review_prompt_compliance_score: { type: Type.INTEGER, description: 'Score out of 100 for prompt compliance' },
+      review_issues: { type: Type.ARRAY, items: { type: Type.STRING }, description: 'Issues identified (e.g., fabric properties conflict with details, colors outside DNA range)' },
+      review_suggested_revision: { type: Type.STRING, description: 'A refinement prompt suggestion (e.g., Increase ripstop texturing, add waterproof zippers)' }
+    },
+    required: [
+      'title', 'category', 'design_rationale', 'prompt', 'fit', 'collar', 
+      'sleeves', 'pockets', 'closures', 'details',
+      'review_style_match_score', 'review_fabric_match_score', 
+      'review_structure_clarity_score', 'review_prompt_compliance_score', 
+      'review_issues', 'review_suggested_revision'
+    ]
+  }
+};
+
+// 2. Tool Declaration: Create Style DNA
+const createStyleDnaTool = {
+  name: 'create_style_dna',
+  description: 'Extract and analyze fashion/aesthetic styles from reference descriptions or images, and save it as a new Style DNA preset.',
+  parameters: {
+    type: Type.OBJECT,
+    properties: {
+      name: { type: Type.STRING, description: 'A descriptive name for this style DNA' },
+      keywords: { type: Type.ARRAY, items: { type: Type.STRING }, description: 'Keywords, vibes, mood (e.g. techwear, minimalist)' },
+      colors: { type: Type.ARRAY, items: { type: Type.STRING }, description: 'Colors and palettes' },
+      silhouettes: { type: Type.ARRAY, items: { type: Type.STRING }, description: 'Outlines, fit, shapes' },
+      materials: { type: Type.ARRAY, items: { type: Type.STRING }, description: 'Associated fabrics/materials' },
+      details: { type: Type.ARRAY, items: { type: Type.STRING }, description: 'Design elements, pockets, closures' },
+      avoid: { type: Type.ARRAY, items: { type: Type.STRING }, description: 'Elements to strictly avoid' }
+    },
+    required: ['name', 'keywords', 'colors', 'silhouettes', 'materials', 'details', 'avoid']
+  }
+};
+
+// 3. Tool Declaration: Create Fabric Card
+const createFabricCardTool = {
+  name: 'create_fabric_card',
+  description: 'Extract and analyze fabric parameters from description or swatch image, and save it as a new Fabric Card preset.',
+  parameters: {
+    type: Type.OBJECT,
+    properties: {
+      name: { type: Type.STRING, description: 'A descriptive name for the fabric card' },
+      composition: { type: Type.STRING, description: 'Estimated or confirmed fiber composition' },
+      weight_gsm: { type: Type.INTEGER, description: 'Fabric weight in GSM (grams per square meter)' },
+      texture: { type: Type.STRING, description: 'e.g. Ribbed knit, smooth satin, matte ripstop' },
+      drape: { type: Type.STRING, description: 'e.g. Crisp stiff, fluid flow' },
+      stretch: { type: Type.STRING, description: 'e.g. Non-stretch, 4-way stretch' },
+      sheen: { type: Type.STRING, description: 'e.g. Matte, glossy, lustrous' },
+      transparency: { type: Type.STRING, description: 'e.g. Opaque, translucent, sheer' },
+      prompt_description: { type: Type.STRING, description: 'Optimized texture description to feed into image gen prompts to render this exact fabric texture.' }
+    },
+    required: ['name', 'composition', 'weight_gsm', 'texture', 'drape', 'stretch', 'sheen', 'transparency', 'prompt_description']
+  }
 };
 
 export async function POST(request: Request) {
@@ -57,15 +109,25 @@ export async function POST(request: Request) {
       fabricCardId, 
       projectId, 
       parentVersionId,
-      displayMode = 'white_background', // 'white_background' or 'on_body'
-      imageGenModel = 'gemini-3.1-flash-image' // Default model
+      imageUrls = [], // Multimodal attachments
+      displayMode = 'white_background', 
+      imageGenModel = 'gemini-3.1-flash-image' 
     } = await request.json();
 
     if (!userPrompt) {
       return NextResponse.json({ error: 'User prompt is required' }, { status: 400 });
     }
 
-    // 2. Fetch Style DNA & Fabric parameters if provided
+    // Save user's message to chat_messages first
+    await supabase.from('chat_messages').insert({
+      project_id: projectId || null,
+      user_id: user.id,
+      role: 'user',
+      text: userPrompt,
+      image_urls: imageUrls || []
+    });
+
+    // 2. Fetch Constraints Style DNA & Fabric parameters if provided
     let styleDnaData: any = null;
     if (styleDnaId) {
       const { data } = await supabase
@@ -115,17 +177,64 @@ export async function POST(request: Request) {
     // Update status to running
     await supabase.from('generation_tasks').update({ status: 'running' }).eq('id', task.id);
 
-    // 4. Construct Gemini instruction incorporating constraints
-    const systemPrompt = `You are a professional fashion design agent. Your task is to design a garment based on a user prompt, adhering strictly to the provided Style DNA and Fabric constraints.
+    // Convert new URLs to Gemini inline parts
+    let imageParts: any[] = [];
+    if (imageUrls && Array.isArray(imageUrls) && imageUrls.length > 0) {
+      imageParts = await Promise.all(
+        imageUrls.map(url => imageUrlToPart(url))
+      );
+    }
+
+    // 4. Fetch last 15 historical messages for context
+    const { data: dbMessages } = await supabase
+      .from('chat_messages')
+      .select('*')
+      .eq('project_id', projectId)
+      .order('created_at', { ascending: false })
+      .limit(15);
+
+    const contents: any[] = [];
+    if (dbMessages && dbMessages.length > 0) {
+      const sortedMessages = [...dbMessages].reverse();
+      for (const msg of sortedMessages) {
+        const role = msg.role === 'user' ? 'user' : 'model';
+        const parts: any[] = [];
+        
+        if (msg.image_urls && msg.image_urls.length > 0) {
+          try {
+            const histParts = await Promise.all(
+              msg.image_urls.map((url: string) => imageUrlToPart(url))
+            );
+            parts.push(...histParts);
+          } catch (err) {
+            console.error("Failed to parse historical image URL", err);
+          }
+        }
+        parts.push({ text: msg.text || '' });
+        contents.push({ role, parts });
+      }
+    }
+
+    // Append the new message
+    const newParts: any[] = [...imageParts];
+    newParts.push({ text: userPrompt });
+    contents.push({ role: 'user', parts: newParts });
+
+    // 5. Construct Gemini system Instruction
+    const systemPrompt = `You are an expert fashion design AI assistant in a professional fashion studio.
+Your role is to collaborate with designers. You have access to tools for creating designs, saving style DNA presets, and saving fabric presets.
+When appropriate, use the tools. Otherwise, answer questions directly using your knowledge and Google Search grounding.
+
+Context & Rules:
 ${styleDnaData ? `
 Style DNA:
-- Aesthetics / Keywords: ${styleDnaData.keywords.join(', ')}
+- Aesthetics: ${styleDnaData.keywords.join(', ')}
 - Colors: ${styleDnaData.colors.join(', ')}
 - Silhouettes: ${styleDnaData.silhouettes.join(', ')}
 - Materials: ${styleDnaData.materials.join(', ')}
 - Details: ${styleDnaData.details.join(', ')}
 - Avoid: ${styleDnaData.avoid.join(', ')}
-` : ''}
+` : 'No active Style DNA selected.'}
 
 ${fabricCardData ? `
 Fabric Properties:
@@ -137,7 +246,7 @@ Fabric Properties:
 - Sheen: ${fabricCardData.sheen}
 - Transparency: ${fabricCardData.transparency}
 - Prompt description for rendering: ${fabricCardData.prompt_description}
-` : ''}
+` : 'No active Fabric Card selected.'}
 
 ${parentGarmentData ? `
 Parent Garment Card to base this variant on:
@@ -150,158 +259,286 @@ Parent Garment Card to base this variant on:
 - Closures: ${parentGarmentData.schema?.closures}
 - Details: ${parentGarmentData.schema?.details?.join(', ')}
 - Rationale: ${parentGarmentData.design_rationale}
-
-Instruction: Based on this parent design, modify it to create a new variant as requested by the user. You must keep the layout and core characteristics similar, but change the specific attributes requested by the user.
 ` : ''}
 
-Reflect the physical reality of the fabric. Generate:
-1. A descriptive title and category.
-2. A design rationale (why these sleeves, collars, fit match this fabric and style).
-3. A structural design schema.
-4. An AI review assessment with scores out of 100 for Style DNA Match, Fabric Compliance, Structural Clarity, and Prompt Compliance, listing any specific issues and a suggested refinement command/revision.
-5. An English rendering prompt for image models.`;
+Intent Guidelines:
+- If the user wants to design a garment, modify a design, or create a variant: call the 'generate_garment_design' tool. Make sure to translate and expand their casual prompt into a detailed English prompt.
+- If the user wants to save or record a Style DNA (e.g. "save this style", "create style DNA"): call the 'create_style_dna' tool.
+- If the user wants to save or record a Fabric Card (e.g. "save this fabric", "create fabric card"): call the 'create_fabric_card' tool.
+- For fashion history, fabric queries, greetings, or explanations: answer with plain text, using Google Search grounding to retrieve real citations where appropriate.`;
 
     const geminiResponse = await ai.models.generateContent({
-      model: 'gemini-3.1-pro-preview', // Pro is recommended for complex reasoning/synthesis
-      contents: [
-        { role: 'user', parts: [{ text: `${systemPrompt}\n\nUser Design Request: "${userPrompt}"` }] }
-      ],
+      model: 'gemini-2.5-pro',
+      contents: contents,
       config: {
-        responseMimeType: 'application/json',
-        responseSchema: garmentResponseSchema,
+        systemInstruction: systemPrompt,
+        tools: [
+          { googleSearch: {} },
+          {
+            functionDeclarations: [
+              generateGarmentTool,
+              createStyleDnaTool,
+              createFabricCardTool
+            ]
+          }
+        ]
       }
     });
 
-    if (!geminiResponse.text) {
-      await supabase.from('generation_tasks')
-        .update({ status: 'failed', error: 'Gemini synthesis failed' })
-        .eq('id', task.id);
-      return NextResponse.json({ error: 'AI synthesis failed' }, { status: 500 });
-    }
+    let isToolCalled = false;
+    let garmentCard = null;
+    let createdStyleDna = null;
+    let createdFabricCard = null;
+    let replyText = "";
 
-    const designResult = JSON.parse(geminiResponse.text);
+    const functionCalls = geminiResponse.functionCalls;
+    if (functionCalls && functionCalls.length > 0) {
+      const call = functionCalls[0];
+      isToolCalled = true;
 
-    // 5. Append Display Mode configurations to prompt
-    let finalPrompt = designResult.prompt;
-    if (displayMode === 'white_background') {
-      finalPrompt += `, professional studio fashion product photography, clean solid white background, flat lay or ghost mannequin style, high resolution detail, 8k, photorealistic`;
-    } else {
-      finalPrompt += `, professional fashion editorial photoshoot, model wearing the garment, full body shot, outdoor city street style or studio lighting, realistic skin textures, 8k, cinematic lighting, photorealistic`;
-    }
+      if (call.name === 'generate_garment_design') {
+        const args = call.args as any;
+        
+        let finalPrompt = args.prompt;
+        if (displayMode === 'white_background') {
+          finalPrompt += `, professional studio fashion product photography, clean solid white background, flat lay or ghost mannequin style, high resolution detail, 8k, photorealistic`;
+        } else {
+          finalPrompt += `, professional fashion editorial photoshoot, model wearing the garment, full body shot, outdoor city street style or studio lighting, realistic skin textures, 8k, cinematic lighting, photorealistic`;
+        }
 
-    // 6. Call Image Generation Provider (Google Gemini Image Model)
-    let generatedImageBuffer: Buffer;
-    let mimeType = 'image/png';
+        let generatedImageBuffer: Buffer;
+        let mimeType = 'image/png';
 
-    try {
-      if (imageGenModel.startsWith('gemini-')) {
-        const imageGenResponse = await ai.models.generateContent({
-          model: imageGenModel,
-          contents: [
-            { role: 'user', parts: [{ text: finalPrompt }] }
-          ],
-          config: {
-            responseModalities: ['IMAGE'],
-            imageConfig: {
-              aspectRatio: '1:1',
+        try {
+          if (imageGenModel.startsWith('gemini-')) {
+            const imageGenResponse = await ai.models.generateContent({
+              model: imageGenModel,
+              contents: [{ role: 'user', parts: [{ text: finalPrompt }] }],
+              config: {
+                responseModalities: ['IMAGE'],
+                imageConfig: { aspectRatio: '1:1' }
+              }
+            });
+
+            const part = imageGenResponse.candidates?.[0]?.content?.parts?.find((p: any) => p.inlineData);
+            const base64ImageBytes = part?.inlineData?.data;
+            if (!base64ImageBytes) {
+              throw new Error('No image bytes returned in Gemini response');
             }
+            mimeType = part?.inlineData?.mimeType || 'image/png';
+            generatedImageBuffer = Buffer.from(base64ImageBytes, 'base64');
+          } else {
+            const imageGenResponse = await ai.models.generateImages({
+              model: imageGenModel,
+              prompt: finalPrompt,
+              config: {
+                numberOfImages: 1,
+                outputMimeType: 'image/png',
+                aspectRatio: '1:1',
+              },
+            });
+
+            const generatedImage = imageGenResponse.generatedImages?.[0];
+            const base64ImageBytes = generatedImage?.image?.imageBytes;
+            if (!base64ImageBytes) {
+              throw new Error('No image bytes returned in Gemini response');
+            }
+            generatedImageBuffer = Buffer.from(base64ImageBytes, 'base64');
           }
-        });
-
-        const part = imageGenResponse.candidates?.[0]?.content?.parts?.find((p: any) => p.inlineData);
-        const base64ImageBytes = part?.inlineData?.data;
-
-        if (!base64ImageBytes) {
-          throw new Error('No image bytes returned in Gemini response');
+        } catch (imgErr: any) {
+          console.error('Image Generation Error:', imgErr);
+          await supabase.from('generation_tasks')
+            .update({ status: 'failed', error: imgErr.message || 'Image generation failed' })
+            .eq('id', task.id);
+          return NextResponse.json({ error: imgErr.message || 'Image generation failed' }, { status: 500 });
         }
 
-        mimeType = part?.inlineData?.mimeType || 'image/png';
-        generatedImageBuffer = Buffer.from(base64ImageBytes, 'base64');
-      } else {
-        const imageGenResponse = await ai.models.generateImages({
-          model: imageGenModel,
-          prompt: finalPrompt,
-          config: {
-            numberOfImages: 1,
-            outputMimeType: 'image/png',
-            aspectRatio: '1:1',
-          },
-        });
+        const filename = `${user.id}/${task.id}_design.png`;
+        const { error: uploadError } = await supabase.storage
+          .from('design_assets')
+          .upload(filename, generatedImageBuffer, {
+            contentType: mimeType,
+            upsert: true
+          });
 
-        const generatedImage = imageGenResponse.generatedImages?.[0];
-        const base64ImageBytes = generatedImage?.image?.imageBytes;
-
-        if (!base64ImageBytes) {
-          throw new Error('No image bytes returned in Gemini response');
+        if (uploadError) {
+          await supabase.from('generation_tasks')
+            .update({ status: 'failed', error: `Storage upload failed: ${uploadError.message}` })
+            .eq('id', task.id);
+          return NextResponse.json({ error: `Storage upload failed: ${uploadError.message}` }, { status: 500 });
         }
 
-        generatedImageBuffer = Buffer.from(base64ImageBytes, 'base64');
+        const { data: { publicUrl } } = supabase.storage
+          .from('design_assets')
+          .getPublicUrl(filename);
+
+        const review = {
+          style_match_score: args.review_style_match_score || 85,
+          fabric_match_score: args.review_fabric_match_score || 85,
+          structure_clarity_score: args.review_structure_clarity_score || 85,
+          prompt_compliance_score: args.review_prompt_compliance_score || 85,
+          issues: args.review_issues || [],
+          suggested_revision: args.review_suggested_revision || ""
+        };
+
+        const { data: insertedGarment, error: garmentError } = await supabase
+          .from('garment_cards')
+          .insert({
+            user_id: user.id,
+            project_id: projectId || null,
+            style_dna_id: styleDnaId || null,
+            fabric_card_id: fabricCardId || null,
+            title: args.title,
+            category: args.category,
+            images: [publicUrl],
+            schema: {
+              fit: args.fit,
+              collar: args.collar,
+              sleeves: args.sleeves,
+              pockets: args.pockets,
+              closures: args.closures,
+              details: args.details || [],
+              review: review
+            },
+            prompt: finalPrompt,
+            negative_prompt: args.negative_prompt,
+            design_rationale: args.design_rationale,
+            parent_version_id: parentVersionId || null
+          })
+          .select()
+          .single();
+
+        if (garmentError) {
+          await supabase.from('generation_tasks')
+            .update({ status: 'failed', error: `Garment card creation failed: ${garmentError.message}` })
+            .eq('id', task.id);
+          return NextResponse.json({ error: garmentError.message }, { status: 500 });
+        }
+
+        garmentCard = insertedGarment;
+        replyText = `我已为您生成了 "${garmentCard.title}" 的设计款式卡。以下是设计原理：\n\n${garmentCard.design_rationale}`;
+
+        await supabase.from('chat_messages').insert({
+          project_id: projectId || null,
+          user_id: user.id,
+          role: 'agent',
+          text: replyText,
+          garment_card_id: garmentCard.id
+        });
+
+        await supabase.from('generation_tasks')
+          .update({ 
+            status: 'success', 
+            output: { garmentCardId: garmentCard.id, imageUrl: publicUrl } 
+          })
+          .eq('id', task.id);
+
+      } else if (call.name === 'create_style_dna') {
+        const args = call.args as any;
+        
+        const { data: styleDna, error: styleError } = await supabase
+          .from('style_dnas')
+          .insert({
+            user_id: user.id,
+            project_id: projectId || null,
+            name: args.name,
+            reference_images: imageUrls || [],
+            keywords: args.keywords || [],
+            colors: args.colors || [],
+            silhouettes: args.silhouettes || [],
+            materials: args.materials || [],
+            details: args.details || [],
+            avoid: args.avoid || []
+          })
+          .select()
+          .single();
+
+        if (styleError) {
+          throw styleError;
+        }
+
+        createdStyleDna = styleDna;
+        replyText = `我已为您成功录入风格基因预设："${createdStyleDna.name}"。\n\n**关键词**: ${createdStyleDna.keywords.join(', ')}\n**色彩**: ${createdStyleDna.colors.join(', ')}\n**廓形**: ${createdStyleDna.silhouettes.join(', ')}`;
+
+        await supabase.from('chat_messages').insert({
+          project_id: projectId || null,
+          user_id: user.id,
+          role: 'agent',
+          text: replyText
+        });
+
+        await supabase.from('generation_tasks')
+          .update({ status: 'success', output: { createdStyleDnaId: createdStyleDna.id } })
+          .eq('id', task.id);
+
+      } else if (call.name === 'create_fabric_card') {
+        const args = call.args as any;
+
+        const { data: fabricCard, error: fabricError } = await supabase
+          .from('fabric_cards')
+          .insert({
+            user_id: user.id,
+            project_id: projectId || null,
+            name: args.name,
+            image: imageUrls && imageUrls.length > 0 ? imageUrls[0] : null,
+            composition: args.composition,
+            weight_gsm: args.weight_gsm,
+            texture: args.texture,
+            drape: args.drape,
+            stretch: args.stretch,
+            sheen: args.sheen,
+            transparency: args.transparency,
+            prompt_description: args.prompt_description
+          })
+          .select()
+          .single();
+
+        if (fabricError) {
+          throw fabricError;
+        }
+
+        createdFabricCard = fabricCard;
+        replyText = `我已为您成功录入面料样卡预设："${createdFabricCard.name}"。\n\n**成分**: ${createdFabricCard.composition}\n**厚度/克重**: ${createdFabricCard.weight_gsm ? `${createdFabricCard.weight_gsm} GSM` : '未指定'}\n**纹理**: ${createdFabricCard.texture}\n**生图描述**: ${createdFabricCard.prompt_description}`;
+
+        await supabase.from('chat_messages').insert({
+          project_id: projectId || null,
+          user_id: user.id,
+          role: 'agent',
+          text: replyText
+        });
+
+        await supabase.from('generation_tasks')
+          .update({ status: 'success', output: { createdFabricCardId: createdFabricCard.id } })
+          .eq('id', task.id);
       }
-    } catch (imgErr: any) {
-      console.error('Image Generation Error:', imgErr);
-      await supabase.from('generation_tasks')
-        .update({ status: 'failed', error: imgErr.message || 'Image generation failed' })
-        .eq('id', task.id);
-      return NextResponse.json({ error: imgErr.message || 'Image generation failed' }, { status: 500 });
-    }
+    } else {
+      replyText = geminiResponse.text || '';
+      const groundingMetadata = geminiResponse.candidates?.[0]?.groundingMetadata || null;
 
-    // 7. Upload generated image to local Supabase Storage
-    const filename = `${user.id}/${task.id}_design.png`;
-    const { data: uploadData, error: uploadError } = await supabase.storage
-      .from('design_assets')
-      .upload(filename, generatedImageBuffer, {
-        contentType: mimeType,
-        upsert: true
+      await supabase.from('chat_messages').insert({
+        project_id: projectId || null,
+        user_id: user.id,
+        role: 'agent',
+        text: replyText,
+        grounding_metadata: groundingMetadata
       });
 
-    if (uploadError) {
       await supabase.from('generation_tasks')
-        .update({ status: 'failed', error: `Storage upload failed: ${uploadError.message}` })
+        .update({ status: 'success', output: { textReply: replyText } })
         .eq('id', task.id);
-      return NextResponse.json({ error: `Storage upload failed: ${uploadError.message}` }, { status: 500 });
     }
 
-    // Retrieve public URL
-    const { data: { publicUrl } } = supabase.storage
-      .from('design_assets')
-      .getPublicUrl(filename);
-
-    // 8. Create Garment Card
-    const { data: garmentCard, error: garmentError } = await supabase
-      .from('garment_cards')
-      .insert({
-        user_id: user.id,
-        project_id: projectId || null,
-        style_dna_id: styleDnaId || null,
-        fabric_card_id: fabricCardId || null,
-        title: designResult.title,
-        category: designResult.category,
-        images: [publicUrl],
-        schema: designResult.schema,
-        prompt: finalPrompt,
-        negative_prompt: designResult.negative_prompt,
-        design_rationale: designResult.design_rationale,
-        parent_version_id: parentVersionId || null
-      })
-      .select()
-      .single();
-
-    if (garmentError) {
-      await supabase.from('generation_tasks')
-        .update({ status: 'failed', error: `Garment card creation failed: ${garmentError.message}` })
-        .eq('id', task.id);
-      return NextResponse.json({ error: garmentError.message }, { status: 500 });
-    }
-
-    // 9. Update Task to Success
-    await supabase.from('generation_tasks')
-      .update({ 
-        status: 'success', 
-        output: { garmentCardId: garmentCard.id, imageUrl: publicUrl } 
-      })
-      .eq('id', task.id);
-
-    return NextResponse.json({ success: true, data: garmentCard });
+    return NextResponse.json({
+      success: true,
+      data: {
+        isToolCalled,
+        replyText,
+        garmentCard,
+        createdStyleDna,
+        createdFabricCard,
+        groundingMetadata: geminiResponse.candidates?.[0]?.groundingMetadata || null
+      }
+    });
 
   } catch (err: any) {
     console.error('Error in agent generate API:', err);
