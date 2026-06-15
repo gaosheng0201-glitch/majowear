@@ -34,6 +34,7 @@ All notable changes and implementations for the AI Personal Fashion Studio proje
 
 ### Fixed
 - **Stale Closure Wiping Chat Messages**: Fixed a React stale closure bug in `AgentChat.tsx` where setting the chat messages after API response/error used the stale component state reference. This caused successfully loaded messages and error notifications to be completely wiped out (disappearing from the UI with no message or error feedback).
+- **Agent-Generated Variants Lacking Lineage Link**: Fixed a bug where `parentVersionId` and active garment DNA/fabric contexts were not passed from the `AgentChat.tsx` panel to the `/api/agent/generate` API endpoint. This caused agent-generated design variants to be saved with `parent_version_id = null`, isolating them as independent products instead of linking them into the garment's version lineage history.
 
 ### Removed
 - **Pre-seeded User Accounts**: Fully removed pre-seeded user credentials from database schema seeds (`seed.sql`), allowing users to register their own accounts manually and log in successfully without state/ID collisions.
