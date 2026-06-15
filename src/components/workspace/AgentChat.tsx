@@ -50,6 +50,41 @@ export default function AgentChat() {
   const [uploadingAttachment, setUploadingAttachment] = useState(false)
   const chatEndRef = useRef<HTMLDivElement>(null)
 
+  // Local state for mention dropdown
+  const [showMentionDropdown, setShowMentionDropdown] = useState(false)
+  const [mentionSearch, setMentionSearch] = useState("")
+  const [mentionIndex, setMentionIndex] = useState(-1)
+
+  const filteredGarments = garmentCards.filter(g => 
+    g.title.toLowerCase().includes(mentionSearch.toLowerCase())
+  )
+
+  const handleInputChange = (val: string) => {
+    setChatInput(val)
+    
+    const lastAtIndex = val.lastIndexOf('@')
+    if (lastAtIndex !== -1 && (lastAtIndex === 0 || val[lastAtIndex - 1] === ' ')) {
+      const query = val.slice(lastAtIndex + 1)
+      if (!query.includes(' ')) {
+        setShowMentionDropdown(true)
+        setMentionSearch(query)
+        setMentionIndex(lastAtIndex)
+        return
+      }
+    }
+    setShowMentionDropdown(false)
+  }
+
+  const handleSelectMention = (garmentTitle: string) => {
+    if (mentionIndex === -1) return
+    const beforeMention = chatInput.slice(0, mentionIndex)
+    const afterMention = chatInput.slice(mentionIndex + mentionSearch.length + 1)
+    setChatInput(`${beforeMention}@${garmentTitle} ${afterMention}`)
+    setShowMentionDropdown(false)
+    setMentionIndex(-1)
+    setMentionSearch("")
+  }
+
   // Auto-scroll chat
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -113,6 +148,14 @@ export default function AgentChat() {
     const promptText = chatInput
     const currentAttachments = [...attachedUrls]
     
+    // Extract referenced garment card IDs by matching @Title patterns in the prompt text
+    const referencedGarmentIds: string[] = []
+    garmentCards.forEach(g => {
+      if (promptText.includes(`@${g.title}`)) {
+        referencedGarmentIds.push(g.id)
+      }
+    })
+
     setChatInput("")
     setAttachedUrls([])
     setChatLoading(true)
@@ -146,6 +189,7 @@ export default function AgentChat() {
           styleDnaId: activeGarment?.style_dna_id || activeStyleDnaId || undefined,
           fabricCardId: activeGarment?.fabric_card_id || activeFabricCardId || undefined,
           parentVersionId: activeGarment?.id || undefined,
+          referencedGarmentIds,
           projectId,
           displayMode,
           imageGenModel,
@@ -338,7 +382,24 @@ export default function AgentChat() {
         <div ref={chatEndRef} />
       </div>
 
-      <div className="p-4 border-t border-border bg-background">
+      <div className="p-4 border-t border-border bg-background relative">
+        {/* Mention Dropdown Popover */}
+        {showMentionDropdown && filteredGarments.length > 0 && (
+          <div className="absolute bottom-[60px] left-4 right-4 bg-popover border border-border rounded-lg shadow-lg max-h-32 overflow-y-auto z-50 p-1 divide-y divide-border/30">
+            {filteredGarments.map((g) => (
+              <button
+                key={g.id}
+                type="button"
+                onClick={() => handleSelectMention(g.title)}
+                className="w-full text-left px-3 py-1.5 hover:bg-accent hover:text-accent-foreground text-xs rounded transition-colors flex items-center justify-between"
+              >
+                <span className="font-medium truncate mr-2">{g.title}</span>
+                <span className="text-[10px] text-muted-foreground shrink-0 uppercase tracking-wide bg-muted px-1.5 py-0.5 rounded">{g.category}</span>
+              </button>
+            ))}
+          </div>
+        )}
+
         {/* Active attachment preview zone */}
         {attachedUrls.length > 0 && (
           <div className="flex flex-wrap gap-2 mb-2 p-2 bg-muted/30 border border-border/50 rounded-lg max-h-24 overflow-y-auto">
@@ -414,7 +475,7 @@ export default function AgentChat() {
 
           <Input 
             value={chatInput}
-            onChange={(e) => setChatInput(e.target.value)}
+            onChange={(e) => handleInputChange(e.target.value)}
             placeholder={
               !activeStyleDnaId 
                 ? (language === 'zh' ? "请先在左侧选择风格 DNA..." : "Select a Style DNA first...") 

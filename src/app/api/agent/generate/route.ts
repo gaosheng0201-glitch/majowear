@@ -37,6 +37,7 @@ const generateGarmentTool = {
       closures: { type: Type.STRING, description: 'e.g. Front zipper, Buttons' },
       details: { type: Type.ARRAY, items: { type: Type.STRING }, description: 'Design highlights' },
       is_new_design: { type: Type.BOOLEAN, description: 'Set to true if the user explicitly wants to generate a brand new garment/design from scratch, ignoring the active/parent garment card. Set to false if they are modifying, editing, making a variant of, or referencing the active/parent garment.' },
+      parent_id: { type: Type.STRING, description: 'If the design is a variant or iteration of a specific @-referenced garment card, provide its ID here to override the default active parent garment.' },
       review_style_match_score: { type: Type.INTEGER, description: 'Score out of 100 for style matching' },
       review_fabric_match_score: { type: Type.INTEGER, description: 'Score out of 100 for fabric compatibility' },
       review_structure_clarity_score: { type: Type.INTEGER, description: 'Score out of 100 for design structure clarity' },
@@ -110,6 +111,7 @@ export async function POST(request: Request) {
       fabricCardId, 
       projectId, 
       parentVersionId,
+      referencedGarmentIds = [],
       imageUrls = [], // Multimodal attachments
       displayMode = 'white_background', 
       imageGenModel = 'gemini-3.1-flash-image' 
@@ -159,6 +161,17 @@ export async function POST(request: Request) {
       parentGarmentData = data;
     }
 
+    let referencedGarmentsData: any[] = [];
+    if (referencedGarmentIds && referencedGarmentIds.length > 0) {
+      const { data } = await supabase
+        .from('garment_cards')
+        .select('*')
+        .in('id', referencedGarmentIds);
+      if (data) {
+        referencedGarmentsData = data;
+      }
+    }
+
     // 3. Create Generation Task (Pending)
     const { data: task, error: taskError } = await supabase
       .from('generation_tasks')
@@ -166,7 +179,7 @@ export async function POST(request: Request) {
         user_id: user.id,
         project_id: projectId || null,
         status: 'pending',
-        input: { userPrompt, styleDnaId, fabricCardId, parentVersionId, displayMode, imageGenModel }
+        input: { userPrompt, styleDnaId, fabricCardId, parentVersionId, referencedGarmentIds, displayMode, imageGenModel }
       })
       .select()
       .single();
@@ -262,10 +275,24 @@ Parent Garment Card to base this variant on:
 - Rationale: ${parentGarmentData.design_rationale}
 ` : ''}
 
+${referencedGarmentsData.length > 0 ? `
+Referenced Garment Cards (explicitly tagged by the user with @):
+${referencedGarmentsData.map(rg => `- Title: ${rg.title} (ID: ${rg.id})
+  - Category: ${rg.category}
+  - Fit: ${rg.schema?.fit}
+  - Collar: ${rg.schema?.collar}
+  - Sleeves: ${rg.schema?.sleeves}
+  - Pockets: ${rg.schema?.pockets}
+  - Closures: ${rg.schema?.closures}
+  - Details: ${rg.schema?.details?.join(', ')}
+  - Rationale: ${rg.design_rationale}`).join('\n')}
+` : ''}
+
 Intent Guidelines:
 - If the user wants to design a garment, modify a design, or create a variant: call the 'generate_garment_design' tool.
   - If a Parent Garment Card is provided, and the user prompt is about modifying, tweaking, creating a variant, or iterating on it: set 'is_new_design' to false.
-  - If the user explicitly wants a brand new design or clothing item that does not iterate on the Parent Garment Card: set 'is_new_design' to true.
+  - If the user explicitly @-references a specific garment card (from the Referenced Garment Cards list) and wants to iterate on or modify it, you must treat that garment card as the parent (set 'is_new_design' to false and specify its ID as the 'parent_id' argument). This overrides any default active parent garment.
+  - If the user explicitly wants a brand new design or clothing item that does not iterate on any Parent or @-referenced Garments: set 'is_new_design' to true.
   - Make sure to translate and expand their casual prompt into a detailed English prompt.
 - If the user wants to save or record a Style DNA (e.g. "save this style", "create style DNA"): call the 'create_style_dna' tool.
 - If the user wants to save or record a Fabric Card (e.g. "save this fabric", "create fabric card"): call the 'create_fabric_card' tool.
@@ -452,7 +479,7 @@ Output only the category name ('TOOL' or 'SEARCH') without any other text.`
             prompt: finalPrompt,
             negative_prompt: args.negative_prompt,
             design_rationale: args.design_rationale,
-            parent_version_id: args.is_new_design === true ? null : (parentVersionId || null)
+            parent_version_id: args.is_new_design === true ? null : (args.parent_id || parentVersionId || null)
           })
           .select()
           .single();
