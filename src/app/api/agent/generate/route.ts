@@ -36,6 +36,7 @@ const generateGarmentTool = {
       pockets: { type: Type.STRING, description: 'e.g. Patch pockets, Zip pockets' },
       closures: { type: Type.STRING, description: 'e.g. Front zipper, Buttons' },
       details: { type: Type.ARRAY, items: { type: Type.STRING }, description: 'Design highlights' },
+      is_new_design: { type: Type.BOOLEAN, description: 'Set to true if the user explicitly wants to generate a brand new garment/design from scratch, ignoring the active/parent garment card. Set to false if they are modifying, editing, making a variant of, or referencing the active/parent garment.' },
       review_style_match_score: { type: Type.INTEGER, description: 'Score out of 100 for style matching' },
       review_fabric_match_score: { type: Type.INTEGER, description: 'Score out of 100 for fabric compatibility' },
       review_structure_clarity_score: { type: Type.INTEGER, description: 'Score out of 100 for design structure clarity' },
@@ -262,7 +263,10 @@ Parent Garment Card to base this variant on:
 ` : ''}
 
 Intent Guidelines:
-- If the user wants to design a garment, modify a design, or create a variant: call the 'generate_garment_design' tool. Make sure to translate and expand their casual prompt into a detailed English prompt.
+- If the user wants to design a garment, modify a design, or create a variant: call the 'generate_garment_design' tool.
+  - If a Parent Garment Card is provided, and the user prompt is about modifying, tweaking, creating a variant, or iterating on it: set 'is_new_design' to false.
+  - If the user explicitly wants a brand new design or clothing item that does not iterate on the Parent Garment Card: set 'is_new_design' to true.
+  - Make sure to translate and expand their casual prompt into a detailed English prompt.
 - If the user wants to save or record a Style DNA (e.g. "save this style", "create style DNA"): call the 'create_style_dna' tool.
 - If the user wants to save or record a Fabric Card (e.g. "save this fabric", "create fabric card"): call the 'create_fabric_card' tool.
 - For fashion history, fabric queries, greetings, or explanations: answer with plain text, using Google Search grounding to retrieve real citations where appropriate.`;
@@ -448,7 +452,7 @@ Output only the category name ('TOOL' or 'SEARCH') without any other text.`
             prompt: finalPrompt,
             negative_prompt: args.negative_prompt,
             design_rationale: args.design_rationale,
-            parent_version_id: parentVersionId || null
+            parent_version_id: args.is_new_design === true ? null : (parentVersionId || null)
           })
           .select()
           .single();
