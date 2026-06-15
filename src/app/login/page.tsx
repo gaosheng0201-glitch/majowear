@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { login, signup } from './actions'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -11,6 +12,7 @@ import { useStudioStore } from '@/lib/store'
 import { translations } from '@/lib/translations'
 
 export default function LoginPage() {
+  const router = useRouter()
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [isSignUp, setIsSignUp] = useState(false)
@@ -29,6 +31,9 @@ export default function LoginPage() {
       const result = isSignUp ? await signup(formData) : await login(formData)
       if (result?.error) {
         setError(result.error)
+      } else if (result?.success) {
+        router.push('/')
+        router.refresh()
       }
     } catch (err: any) {
       setError(err?.message || 'An unexpected error occurred.')
