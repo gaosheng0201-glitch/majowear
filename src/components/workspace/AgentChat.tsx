@@ -59,7 +59,20 @@ export default function AgentChat() {
     g.title.toLowerCase().includes(mentionSearch.toLowerCase())
   )
 
+  const savedRangeRef = useRef<Range | null>(null)
+
+  const saveSelection = () => {
+    const selection = window.getSelection()
+    if (selection && selection.rangeCount > 0) {
+      const range = selection.getRangeAt(0)
+      if (editorRef.current && editorRef.current.contains(range.commonAncestorContainer)) {
+        savedRangeRef.current = range.cloneRange()
+      }
+    }
+  }
+
   const handleEditorInput = () => {
+    saveSelection()
     const selection = window.getSelection()
     if (selection && selection.rangeCount > 0) {
       const range = selection.getRangeAt(0)
@@ -88,9 +101,18 @@ export default function AgentChat() {
     if (!editor) return
 
     const selection = window.getSelection()
-    if (!selection || selection.rangeCount === 0) return
+    if (!selection) return
 
-    const range = selection.getRangeAt(0)
+    let range: Range | null = null
+    if (savedRangeRef.current) {
+      range = savedRangeRef.current.cloneRange()
+      selection.removeAllRanges()
+      selection.addRange(range)
+    } else if (selection.rangeCount > 0) {
+      range = selection.getRangeAt(0)
+    }
+
+    if (!range) return
     const textNode = range.startContainer
 
     // 1. Delete the "@query" text from the DOM node
@@ -125,6 +147,9 @@ export default function AgentChat() {
     newRange.collapse(true)
     selection.removeAllRanges()
     selection.addRange(newRange)
+
+    // Update saved selection range
+    savedRangeRef.current = newRange.cloneRange()
 
     // 6. Close dropdown state
     setShowMentionDropdown(false)
@@ -451,6 +476,9 @@ export default function AgentChat() {
               <button
                 key={g.id}
                 type="button"
+                onMouseDown={(e) => {
+                  e.preventDefault() // Prevents editor focus loss
+                }}
                 onClick={() => handleSelectMention(g)}
                 className="w-full text-left px-3 py-1.5 hover:bg-accent hover:text-accent-foreground text-xs rounded transition-colors flex items-center justify-between"
               >
@@ -539,6 +567,9 @@ export default function AgentChat() {
             contentEditable={!chatLoading && !!activeStyleDnaId && !!activeFabricCardId}
             onInput={handleEditorInput}
             onKeyDown={handleKeyDown}
+            onKeyUp={saveSelection}
+            onMouseUp={saveSelection}
+            onFocus={saveSelection}
             data-placeholder={
               !activeStyleDnaId 
                 ? (language === 'zh' ? "请先在左侧选择风格 DNA..." : "Select a Style DNA first...") 
