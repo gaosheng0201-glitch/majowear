@@ -157,7 +157,8 @@ export default function AgentChat() {
       }
 
       const resData = result.data
-      const updated = [...messages]
+      const currentMessages = useStudioStore.getState().messages
+      const updated = [...currentMessages]
       const index = updated.findIndex(m => m.id === agentMsgId)
 
       if (index !== -1) {
@@ -216,7 +217,8 @@ export default function AgentChat() {
 
     } catch (err: any) {
       console.warn("Agent generate failed:", err)
-      const updated = [...messages]
+      const currentMessages = useStudioStore.getState().messages
+      const updated = [...currentMessages]
       const index = updated.findIndex(m => m.id === agentMsgId)
       if (index !== -1) {
         updated[index] = {
