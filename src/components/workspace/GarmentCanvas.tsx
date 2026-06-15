@@ -17,7 +17,10 @@ import {
   History,
   FolderPlus,
   AlertTriangle,
-  Award
+  Award,
+  X,
+  ZoomIn,
+  ZoomOut
 } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
 import { useStudioStore, GarmentCard, ChatMessage } from "@/lib/store"
@@ -52,6 +55,31 @@ export default function GarmentCanvas() {
   const [quickPrompt, setQuickPrompt] = useState("")
   const [variantLoading, setVariantLoading] = useState(false)
   const [variantError, setVariantError] = useState<string | null>(null)
+
+  // Image viewer zoom & pan state
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false)
+  const [zoomScale, setZoomScale] = useState(1)
+  const [panOffset, setPanOffset] = useState({ x: 0, y: 0 })
+  const [isDragging, setIsDragging] = useState(false)
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0 })
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    if (zoomScale <= 1) return
+    setIsDragging(true)
+    setDragStart({ x: e.clientX - panOffset.x, y: e.clientY - panOffset.y })
+  }
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (!isDragging) return
+    setPanOffset({
+      x: e.clientX - dragStart.x,
+      y: e.clientY - dragStart.y
+    })
+  }
+
+  const handleMouseUp = () => {
+    setIsDragging(false)
+  }
 
   if (!activeGarment) {
     // Return empty ready state
@@ -290,14 +318,13 @@ ${activeGarment.prompt}
                 alt={activeGarment.title} 
                 className="object-contain w-full h-full max-h-[50vh] lg:max-h-full p-2 animate-in fade-in duration-300"
               />
-              <a 
-                href={activeGarment.images[0]} 
-                target="_blank" 
-                rel="noopener noreferrer" 
-                className="absolute bottom-4 right-4 bg-background/80 hover:bg-background text-foreground p-2 rounded-lg border border-border backdrop-blur shadow-md hover:scale-105 transition-all"
+              <button 
+                onClick={() => setIsPreviewOpen(true)}
+                className="absolute bottom-4 right-4 bg-background/80 hover:bg-background text-foreground p-2 rounded-lg border border-border backdrop-blur shadow-md hover:scale-105 transition-all cursor-pointer"
+                title={language === 'zh' ? '放大查看' : 'Zoom view'}
               >
                 <Maximize2 className="w-4 h-4" />
-              </a>
+              </button>
             </>
           ) : (
             <div className="text-center text-muted-foreground p-8">
@@ -489,6 +516,90 @@ ${activeGarment.prompt}
         </div>
       </div>
     </div>
+
+    {/* Floating preview zoom & pan modal overlay */}
+    {isPreviewOpen && activeGarment.images?.[0] && (
+      <div 
+        className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-black/95 backdrop-blur-md animate-in fade-in duration-200"
+        onMouseUp={handleMouseUp}
+        onMouseLeave={handleMouseUp}
+      >
+        {/* Top toolbar */}
+        <div className="absolute top-4 left-4 right-4 flex items-center justify-between z-50 text-white select-none">
+          <span className="text-sm font-semibold tracking-wide truncate pr-4">
+            {activeGarment.title}
+          </span>
+          <div className="flex items-center space-x-3 bg-zinc-950/60 border border-white/10 rounded-full px-4 py-1.5 backdrop-blur-md shadow-lg">
+            <button 
+              onClick={() => setZoomScale(prev => Math.max(0.5, prev - 0.25))}
+              className="hover:text-indigo-400 transition-colors p-1 cursor-pointer"
+              title={language === 'zh' ? '缩小' : 'Zoom Out'}
+            >
+              <ZoomOut className="w-4 h-4" />
+            </button>
+            <span className="text-xs font-mono w-12 text-center">
+              {Math.round(zoomScale * 100)}%
+            </span>
+            <button 
+              onClick={() => setZoomScale(prev => Math.min(4, prev + 0.25))}
+              className="hover:text-indigo-400 transition-colors p-1 cursor-pointer"
+              title={language === 'zh' ? '放大' : 'Zoom In'}
+            >
+              <ZoomIn className="w-4 h-4" />
+            </button>
+            <div className="h-3 w-px bg-white/10" />
+            <button 
+              onClick={() => {
+                setZoomScale(1)
+                setPanOffset({ x: 0, y: 0 })
+              }}
+              className="hover:text-indigo-400 transition-colors text-xs font-medium px-1 cursor-pointer"
+            >
+              {language === 'zh' ? '重置' : 'Reset'}
+            </button>
+          </div>
+          
+          <button 
+            onClick={() => {
+              setIsPreviewOpen(false)
+              setZoomScale(1)
+              setPanOffset({ x: 0, y: 0 })
+            }}
+            className="w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 border border-white/10 flex items-center justify-center transition-all hover:scale-105 shadow-md cursor-pointer"
+            title={language === 'zh' ? '关闭' : 'Close'}
+          >
+            <X className="w-5 h-5 text-white" />
+          </button>
+        </div>
+
+        {/* Interactive Image Container */}
+        <div 
+          className="w-full h-full flex items-center justify-center overflow-hidden relative"
+          onMouseMove={handleMouseMove}
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img 
+            src={activeGarment.images[0]} 
+            alt={activeGarment.title} 
+            onMouseDown={handleMouseDown}
+            style={{
+              transform: `translate(${panOffset.x}px, ${panOffset.y}px) scale(${zoomScale})`,
+              transition: isDragging ? 'none' : 'transform 0.15s ease-out',
+              cursor: zoomScale > 1 ? (isDragging ? 'grabbing' : 'grab') : 'default'
+            }}
+            className="max-w-[90%] max-h-[85%] object-contain select-none shadow-2xl rounded"
+            draggable={false}
+          />
+        </div>
+        
+        {/* Help tip at the bottom */}
+        <div className="absolute bottom-6 text-white/50 text-[10px] select-none pointer-events-none text-center">
+          {language === 'zh' 
+            ? '提示：放大后，可在屏幕上按住鼠标左键拖动图片' 
+            : 'Tip: Hold left mouse button and drag to pan when zoomed in'}
+        </div>
+      </div>
+    )}
   </div>
 )
 }
