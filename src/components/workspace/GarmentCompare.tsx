@@ -78,14 +78,14 @@ export default function GarmentCompare({ isOpen, onClose }: GarmentCompareProps)
   // Dragging states
   const [isDragging, setIsDragging] = useState(false)
 
-  // Layout refs for measuring width
+  // Layout refs for measuring width of the actual image container card
   const containerRef = useRef<HTMLDivElement>(null)
   const [containerWidth, setContainerWidth] = useState<number | null>(null)
 
   useEffect(() => {
     if (!isOpen) return
     
-    // Measure initial width
+    // Measure initial width of the image container card
     if (containerRef.current) {
       setContainerWidth(containerRef.current.clientWidth)
     }
@@ -226,49 +226,46 @@ export default function GarmentCompare({ isOpen, onClose }: GarmentCompareProps)
         </button>
       </div>
 
-      {/* Main Interactive Comparison Display Area */}
+      {/* Main Comparison Display Area */}
       <div 
-        ref={containerRef}
+        className="w-full h-full flex items-center justify-center overflow-hidden relative select-none p-6"
         onMouseDown={handleMouseDown}
-        className="w-full h-full flex items-center justify-center overflow-hidden relative select-none"
       >
         {imgA && imgB ? (
           <div 
-            className="relative aspect-[3/4] h-full max-h-[72vh] w-full max-w-[90vw] md:max-w-2xl bg-zinc-900/40 rounded-2xl overflow-hidden shadow-2xl border border-white/10 select-none pointer-events-none"
+            ref={containerRef}
+            className="relative aspect-square h-full max-h-[72vh] w-full max-w-[90vw] md:max-w-[72vh] bg-zinc-900/40 rounded-2xl overflow-hidden shadow-2xl border border-white/10 select-none pointer-events-none"
           >
             {compareMode === 'slide' ? (
               <>
-                {/* Image B (Base - right side) */}
+                {/* Image B (Base - right/under side) */}
                 <img 
                   src={imgB} 
                   alt="Version B" 
-                  className="absolute inset-0 w-full h-full object-contain pointer-events-none"
+                  className="absolute inset-0 w-full h-full object-cover pointer-events-none"
                   draggable={false}
                 />
                 
-                {/* Image A (Clipped Overlay - left side) */}
+                {/* Image A (Clipped Overlay - left/over side) */}
                 <div 
-                  className="absolute inset-0 overflow-hidden pointer-events-none"
+                  className="absolute inset-y-0 left-0 overflow-hidden pointer-events-none"
                   style={{ width: `${slidePercentage}%` }}
                 >
                   <img 
                     src={imgA} 
                     alt="Version A" 
-                    className="absolute inset-0 h-full object-contain max-w-none pointer-events-none"
-                    style={{ 
-                      width: containerWidth ? `${containerWidth}px` : '100%',
-                      height: '100%',
-                    }}
+                    className="absolute top-0 left-0 h-full object-cover max-w-none pointer-events-none"
+                    style={{ width: containerWidth ? `${containerWidth}px` : '100%' }}
                     draggable={false}
                   />
                 </div>
                 
                 {/* Vertical slider divider bar */}
                 <div 
-                  className="absolute inset-y-0 w-[2px] bg-indigo-500 cursor-ew-resize z-20 flex items-center justify-center divider-handle pointer-events-auto"
+                  className="absolute inset-y-0 w-[1.5px] bg-white/40 cursor-ew-resize z-20 flex items-center justify-center divider-handle pointer-events-auto"
                   style={{ left: `${slidePercentage}%` }}
                 >
-                  <div className="w-8 h-8 rounded-full bg-indigo-500 border-4 border-zinc-950 flex items-center justify-center shadow-xl hover:scale-110 active:scale-95 transition-transform text-white">
+                  <div className="w-8 h-8 rounded-full bg-white border border-zinc-200 flex items-center justify-center shadow-xl hover:scale-105 active:scale-95 transition-transform text-zinc-950">
                     <Sliders className="w-3.5 h-3.5 rotate-90" />
                   </div>
                 </div>
@@ -279,7 +276,7 @@ export default function GarmentCompare({ isOpen, onClose }: GarmentCompareProps)
                 <img 
                   src={imgA} 
                   alt="Version A" 
-                  className="absolute inset-0 w-full h-full object-contain pointer-events-none"
+                  className="absolute inset-0 w-full h-full object-cover pointer-events-none"
                   draggable={false}
                 />
                 
@@ -287,7 +284,7 @@ export default function GarmentCompare({ isOpen, onClose }: GarmentCompareProps)
                 <img 
                   src={imgB} 
                   alt="Version B" 
-                  className="absolute inset-0 w-full h-full object-contain pointer-events-none"
+                  className="absolute inset-0 w-full h-full object-cover pointer-events-none"
                   style={{ opacity: opacity / 100 }}
                   draggable={false}
                 />
@@ -337,7 +334,7 @@ export default function GarmentCompare({ isOpen, onClose }: GarmentCompareProps)
         <div className="text-white/40 text-[9px] pointer-events-none text-center leading-relaxed">
           {compareMode === 'slide' 
             ? (language === 'zh' 
-                ? '提示：在图片上左右拖动中间的黄色滑块以划动展示设计图差异' 
+                ? '提示：在图片上左右拖动中间的白色滑块以划动展示设计图差异' 
                 : 'Tip: Drag divider to compare designs')
             : (language === 'zh' 
                 ? '提示：使用下方的叠加度滑块以透视重合对比差异' 

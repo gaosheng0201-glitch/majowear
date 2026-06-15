@@ -70,7 +70,7 @@ export default function ProjectWorkspace() {
         const { data: styleData } = await supabase
           .from('style_dnas')
           .select('*')
-          .eq('project_id', projectId)
+          .eq('user_id', user.id)
           .order('created_at', { ascending: false })
         
         setStyleDnas(styleData || [])
@@ -82,7 +82,7 @@ export default function ProjectWorkspace() {
         const { data: fabricData } = await supabase
           .from('fabric_cards')
           .select('*')
-          .eq('project_id', projectId)
+          .eq('user_id', user.id)
           .order('created_at', { ascending: false })
         
         setFabricCards(fabricData || [])

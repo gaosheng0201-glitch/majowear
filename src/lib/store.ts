@@ -132,6 +132,8 @@ interface StudioState {
   setLanguage: (lang: 'zh' | 'en') => void
   setDisplayMode: (mode: 'white_background' | 'on_body') => void
   setImageGenModel: (model: string) => void
+  updateStyleDna: (styleDna: StyleDna) => void
+  updateFabricCard: (fabricCard: FabricCard) => void
 }
 
 export const useStudioStore = create<StudioState>((set) => ({
@@ -173,5 +175,11 @@ export const useStudioStore = create<StudioState>((set) => ({
   setLanguage: (language) => set({ language }),
   setDisplayMode: (displayMode) => set({ displayMode }),
   setImageGenModel: (imageGenModel) => set({ imageGenModel }),
+  updateStyleDna: (styleDna) => set((state) => ({
+    styleDnas: state.styleDnas.map(s => s.id === styleDna.id ? styleDna : s)
+  })),
+  updateFabricCard: (fabricCard) => set((state) => ({
+    fabricCards: state.fabricCards.map(f => f.id === fabricCard.id ? fabricCard : f)
+  })),
 }))
 

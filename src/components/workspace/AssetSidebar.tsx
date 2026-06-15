@@ -13,7 +13,8 @@ import {
   X,
   FolderOpen,
   Shirt,
-  Tags
+  Tags,
+  Edit3
 } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
 import { useStudioStore, StyleDna, FabricCard, Collection } from "@/lib/store"
@@ -27,8 +28,10 @@ export default function AssetSidebar() {
   const {
     styleDnas,
     addStyleDna,
+    updateStyleDna,
     fabricCards,
     addFabricCard,
+    updateFabricCard,
     garmentCards,
     activeStyleDnaId,
     setActiveStyleDnaId,
@@ -47,7 +50,33 @@ export default function AssetSidebar() {
   const [isStyleModalOpen, setIsStyleModalOpen] = useState(false)
   const [isFabricModalOpen, setIsFabricModalOpen] = useState(false)
   const [isCollectionModalOpen, setIsCollectionModalOpen] = useState(false)
-  
+
+  // Edit Style DNA Form State
+  const [editingStyle, setEditingStyle] = useState<StyleDna | null>(null)
+  const [editStyleName, setEditStyleName] = useState("")
+  const [editStyleKeywords, setEditStyleKeywords] = useState("")
+  const [editStyleColors, setEditStyleColors] = useState("")
+  const [editStyleSilhouettes, setEditStyleSilhouettes] = useState("")
+  const [editStyleMaterials, setEditStyleMaterials] = useState("")
+  const [editStyleDetails, setEditStyleDetails] = useState("")
+  const [editStyleAvoid, setEditStyleAvoid] = useState("")
+  const [editStyleLoading, setEditStyleLoading] = useState(false)
+  const [editStyleError, setEditStyleError] = useState<string | null>(null)
+
+  // Edit Fabric Card Form State
+  const [editingFabric, setEditingFabric] = useState<FabricCard | null>(null)
+  const [editFabricName, setEditFabricName] = useState("")
+  const [editFabricComposition, setEditFabricComposition] = useState("")
+  const [editFabricWeight, setEditFabricWeight] = useState("")
+  const [editFabricTexture, setEditFabricTexture] = useState("")
+  const [editFabricDrape, setEditFabricDrape] = useState("")
+  const [editFabricStretch, setEditFabricStretch] = useState("")
+  const [editFabricSheen, setEditFabricSheen] = useState("")
+  const [editFabricTransparency, setEditFabricTransparency] = useState("")
+  const [editFabricPromptDesc, setEditFabricPromptDesc] = useState("")
+  const [editFabricLoading, setEditFabricLoading] = useState(false)
+  const [editFabricError, setEditFabricError] = useState<string | null>(null)
+
   // Style DNA Upload Form state
   const [styleName, setStyleName] = useState("")
   const [styleFiles, setStyleFiles] = useState<FileList | null>(null)
@@ -70,6 +99,105 @@ export default function AssetSidebar() {
 
   // Active filter
   const [selectedCollectionId, setSelectedCollectionId] = useState<string | null>(null)
+
+  const handleOpenStyleEdit = (style: StyleDna) => {
+    setEditingStyle(style)
+    setEditStyleName(style.name)
+    setEditStyleKeywords(style.keywords ? style.keywords.join(", ") : "")
+    setEditStyleColors(style.colors ? style.colors.join(", ") : "")
+    setEditStyleSilhouettes(style.silhouettes ? style.silhouettes.join(", ") : "")
+    setEditStyleMaterials(style.materials ? style.materials.join(", ") : "")
+    setEditStyleDetails(style.details ? style.details.join(", ") : "")
+    setEditStyleAvoid(style.avoid ? style.avoid.join(", ") : "")
+    setEditStyleError(null)
+  }
+
+  const handleUpdateStyleDna = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!editingStyle) return
+    setEditStyleLoading(true)
+    setEditStyleError(null)
+    try {
+      const updatedStyleData = {
+        name: editStyleName,
+        keywords: editStyleKeywords.split(',').map(s => s.trim()).filter(Boolean),
+        colors: editStyleColors.split(',').map(s => s.trim()).filter(Boolean),
+        silhouettes: editStyleSilhouettes.split(',').map(s => s.trim()).filter(Boolean),
+        materials: editStyleMaterials.split(',').map(s => s.trim()).filter(Boolean),
+        details: editStyleDetails.split(',').map(s => s.trim()).filter(Boolean),
+        avoid: editStyleAvoid.split(',').map(s => s.trim()).filter(Boolean),
+        updated_at: new Date().toISOString()
+      }
+      
+      const { data, error } = await supabase
+        .from('style_dnas')
+        .update(updatedStyleData)
+        .eq('id', editingStyle.id)
+        .select()
+        .single()
+        
+      if (error) throw error
+      
+      updateStyleDna(data)
+      setEditingStyle(null)
+    } catch (err: any) {
+      console.error(err)
+      setEditStyleError(err.message || "Failed to update Style DNA")
+    } finally {
+      setEditStyleLoading(false)
+    }
+  }
+
+  const handleOpenFabricEdit = (fabric: FabricCard) => {
+    setEditingFabric(fabric)
+    setEditFabricName(fabric.name || "")
+    setEditFabricComposition(fabric.composition || "")
+    setEditFabricWeight(fabric.weight_gsm ? fabric.weight_gsm.toString() : "")
+    setEditFabricTexture(fabric.texture || "")
+    setEditFabricDrape(fabric.drape || "")
+    setEditFabricStretch(fabric.stretch || "")
+    setEditFabricSheen(fabric.sheen || "")
+    setEditFabricTransparency(fabric.transparency || "")
+    setEditFabricPromptDesc(fabric.prompt_description || "")
+    setEditFabricError(null)
+  }
+
+  const handleUpdateFabricCard = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!editingFabric) return
+    setEditFabricLoading(true)
+    setEditFabricError(null)
+    try {
+      const updatedFabricData = {
+        name: editFabricName,
+        composition: editFabricComposition,
+        weight_gsm: editFabricWeight ? parseInt(editFabricWeight) : null,
+        texture: editFabricTexture,
+        drape: editFabricDrape,
+        stretch: editFabricStretch,
+        sheen: editFabricSheen,
+        transparency: editFabricTransparency,
+        prompt_description: editFabricPromptDesc
+      }
+      
+      const { data, error } = await supabase
+        .from('fabric_cards')
+        .update(updatedFabricData)
+        .eq('id', editingFabric.id)
+        .select()
+        .single()
+        
+      if (error) throw error
+      
+      updateFabricCard(data)
+      setEditingFabric(null)
+    } catch (err: any) {
+      console.error(err)
+      setEditFabricError(err.message || "Failed to update Fabric Card")
+    } finally {
+      setEditFabricLoading(false)
+    }
+  }
 
   // Helper function to upload file to Storage
   const uploadFileToStorage = async (file: File, folderName: string): Promise<string> => {
@@ -261,14 +389,22 @@ export default function AssetSidebar() {
           ) : (
             <ul className="space-y-1">
               {styleDnas.map((style) => (
-                <li key={style.id}>
+                <li key={style.id} className="group flex items-center justify-between space-x-1">
                   <Button 
                     variant={activeStyleDnaId === style.id ? "secondary" : "ghost"}
-                    className="w-full justify-between text-left text-sm h-auto py-1.5 px-2.5 align-middle"
+                    className="flex-1 justify-start text-left text-sm h-auto py-1.5 px-2.5 align-middle truncate"
                     onClick={() => setActiveStyleDnaId(style.id)}
                   >
-                    <span className="truncate pr-2">{style.name}</span>
-                    {activeStyleDnaId === style.id && <Check className="w-3.5 h-3.5 text-primary shrink-0" />}
+                    <span className="truncate pr-2 flex-1">{style.name}</span>
+                    {activeStyleDnaId === style.id && <Check className="w-3.5 h-3.5 text-primary shrink-0 ml-auto" />}
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="w-7 h-7 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity hover:bg-muted shrink-0"
+                    onClick={() => handleOpenStyleEdit(style)}
+                  >
+                    <Edit3 className="w-3.5 h-3.5 text-muted-foreground hover:text-foreground" />
                   </Button>
                 </li>
               ))}
@@ -295,14 +431,22 @@ export default function AssetSidebar() {
           ) : (
             <ul className="space-y-1">
               {fabricCards.map((fabric) => (
-                <li key={fabric.id}>
+                <li key={fabric.id} className="group flex items-center justify-between space-x-1">
                   <Button 
                     variant={activeFabricCardId === fabric.id ? "secondary" : "ghost"}
-                    className="w-full justify-between text-left text-sm h-auto py-1.5 px-2.5 align-middle"
+                    className="flex-1 justify-start text-left text-sm h-auto py-1.5 px-2.5 align-middle truncate"
                     onClick={() => setActiveFabricCardId(fabric.id)}
                   >
-                    <span className="truncate pr-2">{fabric.name}</span>
-                    {activeFabricCardId === fabric.id && <Check className="w-3.5 h-3.5 text-primary shrink-0" />}
+                    <span className="truncate pr-2 flex-1">{fabric.name}</span>
+                    {activeFabricCardId === fabric.id && <Check className="w-3.5 h-3.5 text-primary shrink-0 ml-auto" />}
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="w-7 h-7 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity hover:bg-muted shrink-0"
+                    onClick={() => handleOpenFabricEdit(fabric)}
+                  >
+                    <Edit3 className="w-3.5 h-3.5 text-muted-foreground hover:text-foreground" />
                   </Button>
                 </li>
               ))}
@@ -590,6 +734,248 @@ export default function AssetSidebar() {
                 <Button type="submit" disabled={colLoading}>
                   {colLoading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
                   <span>{t.create}</span>
+                </Button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+      {/* Style DNA Edit Modal */}
+      {editingStyle && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm transition-all duration-300">
+          <div className="w-full max-w-lg bg-card border border-border rounded-xl p-6 shadow-2xl relative animate-in fade-in-50 zoom-in-95 duration-200">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-xl font-outfit font-bold">{language === 'zh' ? '编辑风格基因' : 'Edit Style DNA'}</h3>
+              <Button variant="ghost" size="icon" onClick={() => setEditingStyle(null)}>
+                <X className="w-4 h-4" />
+              </Button>
+            </div>
+            
+            <form onSubmit={handleUpdateStyleDna} className="space-y-4 max-h-[70vh] overflow-y-auto pr-1">
+              {editStyleError && (
+                <div className="flex items-center space-x-2 text-xs bg-destructive/15 text-destructive p-3 rounded-lg border border-destructive/20">
+                  <AlertCircle className="w-4 h-4 shrink-0" />
+                  <span>{editStyleError}</span>
+                </div>
+              )}
+
+              <div className="space-y-2">
+                <Label htmlFor="editStyleName">{t.styleFormName}</Label>
+                <Input
+                  id="editStyleName"
+                  value={editStyleName}
+                  onChange={(e) => setEditStyleName(e.target.value)}
+                  required
+                  className="bg-muted/50"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="editStyleKeywords">{language === 'zh' ? '风格关键词 (逗号分隔)' : 'Keywords (comma separated)'}</Label>
+                <Input
+                  id="editStyleKeywords"
+                  value={editStyleKeywords}
+                  onChange={(e) => setEditStyleKeywords(e.target.value)}
+                  className="bg-muted/50"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="editStyleColors">{language === 'zh' ? '色彩搭配 (逗号分隔)' : 'Colors (comma separated)'}</Label>
+                <Input
+                  id="editStyleColors"
+                  value={editStyleColors}
+                  onChange={(e) => setEditStyleColors(e.target.value)}
+                  className="bg-muted/50"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="editStyleSilhouettes">{language === 'zh' ? '廓形特点 (逗号分隔)' : 'Silhouettes (comma separated)'}</Label>
+                <Input
+                  id="editStyleSilhouettes"
+                  value={editStyleSilhouettes}
+                  onChange={(e) => setEditStyleSilhouettes(e.target.value)}
+                  className="bg-muted/50"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="editStyleMaterials">{language === 'zh' ? '面料材质 (逗号分隔)' : 'Materials (comma separated)'}</Label>
+                <Input
+                  id="editStyleMaterials"
+                  value={editStyleMaterials}
+                  onChange={(e) => setEditStyleMaterials(e.target.value)}
+                  className="bg-muted/50"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="editStyleDetails">{language === 'zh' ? '结构细节 (逗号分隔)' : 'Details (comma separated)'}</Label>
+                <Input
+                  id="editStyleDetails"
+                  value={editStyleDetails}
+                  onChange={(e) => setEditStyleDetails(e.target.value)}
+                  className="bg-muted/50"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="editStyleAvoid">{language === 'zh' ? '避免元素 (逗号分隔)' : 'Avoid elements (comma separated)'}</Label>
+                <Input
+                  id="editStyleAvoid"
+                  value={editStyleAvoid}
+                  onChange={(e) => setEditStyleAvoid(e.target.value)}
+                  className="bg-muted/50"
+                />
+              </div>
+
+              <div className="flex justify-end space-x-2 pt-4 border-t border-border mt-4">
+                <Button 
+                  type="button" 
+                  variant="outline" 
+                  onClick={() => setEditingStyle(null)}
+                  disabled={editStyleLoading}
+                >
+                  {t.cancel}
+                </Button>
+                <Button type="submit" disabled={editStyleLoading}>
+                  {editStyleLoading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                  <span>{language === 'zh' ? '保存修改' : 'Save Changes'}</span>
+                </Button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Fabric Card Edit Modal */}
+      {editingFabric && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm transition-all duration-300">
+          <div className="w-full max-w-lg bg-card border border-border rounded-xl p-6 shadow-2xl relative animate-in fade-in-50 zoom-in-95 duration-200">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-xl font-outfit font-bold">{language === 'zh' ? '编辑面料属性' : 'Edit Fabric Properties'}</h3>
+              <Button variant="ghost" size="icon" onClick={() => setEditingFabric(null)}>
+                <X className="w-4 h-4" />
+              </Button>
+            </div>
+            
+            <form onSubmit={handleUpdateFabricCard} className="space-y-4 max-h-[70vh] overflow-y-auto pr-1">
+              {editFabricError && (
+                <div className="flex items-center space-x-2 text-xs bg-destructive/15 text-destructive p-3 rounded-lg border border-destructive/20">
+                  <AlertCircle className="w-4 h-4 shrink-0" />
+                  <span>{editFabricError}</span>
+                </div>
+              )}
+
+              <div className="space-y-2">
+                <Label htmlFor="editFabricName">{t.fabricFormName}</Label>
+                <Input
+                  id="editFabricName"
+                  value={editFabricName}
+                  onChange={(e) => setEditFabricName(e.target.value)}
+                  required
+                  className="bg-muted/50"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <Label htmlFor="editFabricComposition">{t.fabricFormComp}</Label>
+                  <Input
+                    id="editFabricComposition"
+                    value={editFabricComposition}
+                    onChange={(e) => setEditFabricComposition(e.target.value)}
+                    className="bg-muted/50"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="editFabricWeight">{t.fabricFormWeight}</Label>
+                  <Input
+                    id="editFabricWeight"
+                    type="number"
+                    value={editFabricWeight}
+                    onChange={(e) => setEditFabricWeight(e.target.value)}
+                    className="bg-muted/50"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <Label htmlFor="editFabricTexture">{language === 'zh' ? '面料纹理' : 'Texture'}</Label>
+                  <Input
+                    id="editFabricTexture"
+                    value={editFabricTexture}
+                    onChange={(e) => setEditFabricTexture(e.target.value)}
+                    className="bg-muted/50"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="editFabricDrape">{language === 'zh' ? '垂坠感' : 'Drape'}</Label>
+                  <Input
+                    id="editFabricDrape"
+                    value={editFabricDrape}
+                    onChange={(e) => setEditFabricDrape(e.target.value)}
+                    className="bg-muted/50"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <Label htmlFor="editFabricStretch">{language === 'zh' ? '弹性描述' : 'Stretch'}</Label>
+                  <Input
+                    id="editFabricStretch"
+                    value={editFabricStretch}
+                    onChange={(e) => setEditFabricStretch(e.target.value)}
+                    className="bg-muted/50"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="editFabricSheen">{language === 'zh' ? '光泽度' : 'Sheen'}</Label>
+                  <Input
+                    id="editFabricSheen"
+                    value={editFabricSheen}
+                    onChange={(e) => setEditFabricSheen(e.target.value)}
+                    className="bg-muted/50"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="editFabricTransparency">{language === 'zh' ? '透明度' : 'Transparency'}</Label>
+                <Input
+                  id="editFabricTransparency"
+                  value={editFabricTransparency}
+                  onChange={(e) => setEditFabricTransparency(e.target.value)}
+                  className="bg-muted/50"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="editFabricPromptDesc">{language === 'zh' ? 'AI 生图提示词纹理优化描述 (Prompt)' : 'Image Gen Prompt Description'}</Label>
+                <textarea
+                  id="editFabricPromptDesc"
+                  value={editFabricPromptDesc}
+                  onChange={(e) => setEditFabricPromptDesc(e.target.value)}
+                  rows={3}
+                  className="w-full bg-muted/50 border border-border rounded-lg p-2 text-sm focus:ring-1 focus:ring-primary outline-none"
+                />
+              </div>
+
+              <div className="flex justify-end space-x-2 pt-4 border-t border-border mt-4">
+                <Button 
+                  type="button" 
+                  variant="outline" 
+                  onClick={() => setEditingFabric(null)}
+                  disabled={editFabricLoading}
+                >
+                  {t.cancel}
+                </Button>
+                <Button type="submit" disabled={editFabricLoading}>
+                  {editFabricLoading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                  <span>{language === 'zh' ? '保存修改' : 'Save Changes'}</span>
                 </Button>
               </div>
             </form>

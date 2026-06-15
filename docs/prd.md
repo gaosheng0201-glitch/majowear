@@ -216,7 +216,7 @@ MVP 需要完成以下闭环：
 
 ### 功能描述
 
-项目是用户组织设计工作的基本单位。一个项目可以包含多个 Style DNA、面料卡、设计款式和系列。
+项目是用户组织设计工作的基本单位。项目主要包含设计款式和系列。而 Style DNA（风格基因）与面料卡则作为用户级别的全局资产，可在用户的所有项目间复用、自主维护与长期沉淀。
 
 ### 字段
 
@@ -726,7 +726,8 @@ P1 实现。
 ```json
 {
   "id": "style_id",
-  "project_id": "project_id",
+  "user_id": "user_id",
+  "project_id": "project_id (nullable)",
   "name": "style name",
   "reference_images": ["url"],
   "keywords": [],
@@ -745,7 +746,8 @@ P1 实现。
 ```json
 {
   "id": "fabric_id",
-  "project_id": "project_id",
+  "user_id": "user_id",
+  "project_id": "project_id (nullable)",
   "name": "fabric name",
   "image": "url",
   "composition": "string",
@@ -1137,7 +1139,7 @@ AI 生成图可能存在不合理结构。
 1. **品类支持范围**：全品类开放支持（不局限于单一性别或品类）。
 2. **语言支持**：界面交互与内容输出全面支持中英双语。底层生图 Prompt 由 Agent 统一处理。
 3. **图片展示模式**：优先支持两种核心模式：“白底服装设计图/款式图”与“模特上身效果图”（通过不同的生图 Prompt 前缀实现切换）。
-4. **Style DNA 作用域**：当做**用户级别**（Global to User）。用户积累的风格库可以在自己所有的项目中跨项目复用。
+4. **Style DNA 与面料卡作用域**：当做**用户级别**（Global to User）。用户积累的风格库与面料库均可以在自己所有的项目中跨项目复用，方便用户长期自主维护、持久沉淀和复用自定义的面料样卡与审美基因。
 5. **MVP 数据库架构**：采用 **Local Supabase Development**（基于本地 Docker）。在 MVP 阶段纯本地运行完整的 Supabase 技术栈（Postgres + Auth + Storage + pgvector），确保零成本及对现有线上数据库的零干扰，且为后续平滑迁移至云端 Supabase 做好准备。
 
 ---
