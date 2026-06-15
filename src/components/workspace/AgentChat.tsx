@@ -113,6 +113,43 @@ export default function AgentChat() {
 
   const t = translations[language]
 
+  const renderMessageText = (text: string, garments: GarmentCard[]) => {
+    if (!text) return ""
+    const validGarments = [...garments]
+      .filter(g => g.title && g.title.trim().length > 0)
+      .sort((a, b) => b.title.length - a.title.length)
+
+    if (validGarments.length === 0) return text
+
+    const escapeRegExp = (str: string) => {
+      return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    }
+
+    const pattern = validGarments.map(g => `@${escapeRegExp(g.title)}`).join('|')
+    const regex = new RegExp(`(${pattern})`, 'g')
+    const parts = text.split(regex)
+
+    return parts.map((part, index) => {
+      if (part.startsWith('@')) {
+        const titleWithoutAt = part.slice(1)
+        const matchedGarment = validGarments.find(g => g.title === titleWithoutAt)
+        if (matchedGarment) {
+          return (
+            <button
+              key={index}
+              type="button"
+              onClick={() => setActiveGarment(matchedGarment)}
+              className="inline-flex items-center gap-1 bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20 rounded px-1.5 py-0.5 text-[10px] font-medium transition-colors mx-0.5 align-middle mb-0.5 select-none"
+            >
+              {part}
+            </button>
+          )
+        }
+      }
+      return <span key={index}>{part}</span>
+    })
+  }
+
   // Local UI state
   const editorRef = useRef<HTMLDivElement>(null)
   const chatEndRef = useRef<HTMLDivElement>(null)
@@ -463,7 +500,9 @@ export default function AgentChat() {
                 {msg.role === 'user' ? (language === 'zh' ? '设计师' : 'Designer') : (language === 'zh' ? '设计 Agent' : 'Agent')}
               </p>
               
-              <p className="leading-relaxed whitespace-pre-line text-xs">{msg.text}</p>
+              <p className="leading-relaxed whitespace-pre-line text-xs">
+                {renderMessageText(msg.text, garmentCards)}
+              </p>
               
               {/* Multimodal user uploaded image attachment list */}
               {msg.image_urls && msg.image_urls.length > 0 && (
