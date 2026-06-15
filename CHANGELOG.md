@@ -10,8 +10,15 @@ All notable changes and implementations for the AI Personal Fashion Studio proje
   - **Function Calling & Intent Routing**: Registered `googleSearch`, `generate_garment_design`, `create_style_dna`, and `create_fabric_card` tools on Gemini 2.5 Pro. Agent automatically answers queries via text, generates clothing layouts, or extracts and creates database presets (automatically updating and highlighting them in the sidebar).
   - **Multimodal Chat Uploads**: Added paperclip file uploader next to chat input. Supports local image uploads, interactive thumbnail previews, and sends files as base64 inline parts to Gemini for visual fashion coordination.
   - **Google Grounding Citations**: Displays clickable superscript footnotes and details referenced web sources at the bottom of the chat bubble.
-- **Local Dev User Seeding & Session Continuity**
-  - Configured `supabase/seed.sql` to seed the exact developer UUID (`dbfde66d-458a-4146-a4c0-54aa6b3689a4`) and test credentials (`gaosheng1@qq.com` / `123456`) on database resets to prevent needing re-registration.
+- **Asset Creation Previews & Validation Limits**
+  - **Style DNA Preview Grid & 10-Image Limit**: Added a thumbnail preview grid to the Style DNA modal, showing selected files with a hover close button to remove them. Enforced a hard limit of 10 reference images (automatically slices files and warns user).
+  - **Fabric Swatch Preview**: Added a close-up preview container for the single selected fabric swatch with remove capabilities.
+- **Two-Step Intent Routing & Classification**
+  - Implemented an intent classification pipeline in `/api/agent/generate` using `gemini-3.5-flash` to identify whether the user prompt requests a tool call (`TOOL`) or a general search query (`SEARCH`). This routes the request to `gemini-2.5-pro` with *either* custom functions or Google Search grounding, resolving the Gemini API conflict where both tools cannot be combined.
+- **Google Gemini Model Upgrades**: Integrated `gemini-3.5-flash` as the core model for intent classification, visual style DNA analysis, and visual fabric swatch analysis, replacing older flash model versions.
+- **Improved Dev Experience & Warning Suppression**
+  - Replaced `console.error` with `console.warn` on caught agent fetch failures to suppress the intrusive Next.js dev error red screen overlay.
+  - Setup undici global ProxyAgent dispatcher in `gemini.ts` to automatically route Gemini API requests through the proxy when `HTTP_PROXY` / `HTTPS_PROXY` are defined in `.env.local`.
 - **Self-Healing Session Handling**
   - Added session self-healing in [page.tsx](file:///d:/majowear/src/app/page.tsx) catch block: when database query fails due to authentication/reset issues, automatically clears the invalid browser session via `signOut()` and redirects to `/login`.
 - **Style DNA & Fabric Cards User-Level Scope (Global Presets)**
@@ -20,6 +27,14 @@ All notable changes and implementations for the AI Personal Fashion Studio proje
   - **Style DNA Editor**: Integrated full-featured modal dialog to review and edit name, keywords, colors, silhouettes, materials, details, and avoids.
   - **Fabric Swatch Editor**: Integrated modal dialog to review and edit composition, weight GSM, texture, drape, stretch, sheen, transparency, and optimized生图 prompt texture descriptions.
   - Both editors update Postgres and local Zustand stores reactively.
+- **Table-Level Privileges for Authenticated Users**: Included global table-level grant privileges (`GRANT ALL ON ALL TABLES...`) in migrations to prevent database permission denied errors from triggering forced session logouts for newly registered users.
+
+### Changed
+- **Authentication & Login Redirection**: Refactored the login server action to return `{ success: true }` and handle redirection client-side with Next.js client router, preventing `NEXT_REDIRECT` errors from being caught and swallowed in client-side try-catch blocks.
+
+### Removed
+- **Pre-seeded User Accounts**: Fully removed pre-seeded user credentials from database schema seeds (`seed.sql`), allowing users to register their own accounts manually and log in successfully without state/ID collisions.
+
 
 ## [1.0.0] - 2026-06-15
 
