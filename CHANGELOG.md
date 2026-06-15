@@ -32,6 +32,9 @@ All notable changes and implementations for the AI Personal Fashion Studio proje
 ### Changed
 - **Authentication & Login Redirection**: Refactored the login server action to return `{ success: true }` and handle redirection client-side with Next.js client router, preventing `NEXT_REDIRECT` errors from being caught and swallowed in client-side try-catch blocks.
 
+### Fixed
+- **Stale Closure Wiping Chat Messages**: Fixed a React stale closure bug in `AgentChat.tsx` where setting the chat messages after API response/error used the stale component state reference. This caused successfully loaded messages and error notifications to be completely wiped out (disappearing from the UI with no message or error feedback).
+
 ### Removed
 - **Pre-seeded User Accounts**: Fully removed pre-seeded user credentials from database schema seeds (`seed.sql`), allowing users to register their own accounts manually and log in successfully without state/ID collisions.
 
