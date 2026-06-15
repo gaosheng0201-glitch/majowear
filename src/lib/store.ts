@@ -60,6 +60,8 @@ export interface ChatMessage {
   text: string
   garmentCard?: GarmentCard
   garment_card_id?: string
+  createdStyleDna?: StyleDna
+  createdFabricCard?: FabricCard
   image_urls?: string[]
   grounding_metadata?: any
   loading?: boolean

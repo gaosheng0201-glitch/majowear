@@ -547,7 +547,8 @@ Output only the category name ('TOOL' or 'SEARCH') without any other text.`
           project_id: projectId || null,
           user_id: user.id,
           role: 'agent',
-          text: replyText
+          text: replyText,
+          grounding_metadata: { createdStyleDnaId: createdStyleDna.id }
         });
 
         await supabase.from('generation_tasks')
@@ -587,7 +588,8 @@ Output only the category name ('TOOL' or 'SEARCH') without any other text.`
           project_id: projectId || null,
           user_id: user.id,
           role: 'agent',
-          text: replyText
+          text: replyText,
+          grounding_metadata: { createdFabricCardId: createdFabricCard.id }
         });
 
         await supabase.from('generation_tasks')
