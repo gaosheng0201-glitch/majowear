@@ -24,7 +24,7 @@ import {
   GitCompare
 } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
-import { useStudioStore, GarmentCard, ChatMessage } from "@/lib/store"
+import { useStudioStore, GarmentCard, ChatMessage, StyleDna, FabricCard } from "@/lib/store"
 import { translations } from "@/lib/translations"
 import GarmentReview from "./GarmentReview"
 import GarmentCompare from "./GarmentCompare"
@@ -43,6 +43,8 @@ export default function GarmentCanvas() {
     updateCollection,
     activeStyleDnaId,
     activeFabricCardId,
+    styleDnas,
+    fabricCards,
     setMessages,
     setChatLoading,
     language,
@@ -57,6 +59,14 @@ export default function GarmentCanvas() {
   const [quickPrompt, setQuickPrompt] = useState("")
   const [variantLoading, setVariantLoading] = useState(false)
   const [variantError, setVariantError] = useState<string | null>(null)
+
+  // Associated DNA and Fabric Card modal view states
+  const [activeViewDna, setActiveViewDna] = useState<StyleDna | null>(null)
+  const [activeViewFabric, setActiveViewFabric] = useState<FabricCard | null>(null)
+
+  // Find associated Style DNA and Fabric Card
+  const associatedDna = styleDnas?.find(d => d.id === activeGarment?.style_dna_id)
+  const associatedFabric = fabricCards?.find(f => f.id === activeGarment?.fabric_card_id)
 
   // Image viewer zoom & pan state
   const [isPreviewOpen, setIsPreviewOpen] = useState(false)
@@ -495,6 +505,60 @@ ${activeGarment.prompt}
                 <span className="text-[10px] text-muted-foreground block mb-0.5">{t.closures}</span>
                 <span className="font-semibold text-foreground">{activeGarment.schema?.closures || 'None'}</span>
               </div>
+
+              {/* STYLE DNA REFERENCE */}
+              <div className="bg-card border border-border/80 p-2 rounded-lg flex flex-col justify-between">
+                <div>
+                  <span className="text-[10px] text-muted-foreground block mb-0.5">
+                    {language === 'zh' ? '关联风格 DNA' : 'Associated Style DNA'}
+                  </span>
+                  {associatedDna ? (
+                    <span className="font-semibold text-foreground block truncate">
+                      {associatedDna.name}
+                    </span>
+                  ) : (
+                    <span className="text-muted-foreground italic block text-[11px]">
+                      {language === 'zh' ? '无' : 'None'}
+                    </span>
+                  )}
+                </div>
+                {associatedDna && (
+                  <button
+                    type="button"
+                    onClick={() => setActiveViewDna(associatedDna)}
+                    className="text-[9px] text-indigo-500 hover:text-indigo-600 font-semibold text-left mt-1.5 self-start cursor-pointer hover:underline"
+                  >
+                    {language === 'zh' ? '查看风格基因 →' : 'View Style DNA →'}
+                  </button>
+                )}
+              </div>
+
+              {/* FABRIC CARD REFERENCE */}
+              <div className="bg-card border border-border/80 p-2 rounded-lg flex flex-col justify-between">
+                <div>
+                  <span className="text-[10px] text-muted-foreground block mb-0.5">
+                    {language === 'zh' ? '关联面料样卡' : 'Associated Fabric'}
+                  </span>
+                  {associatedFabric ? (
+                    <span className="font-semibold text-foreground block truncate">
+                      {associatedFabric.name}
+                    </span>
+                  ) : (
+                    <span className="text-muted-foreground italic block text-[11px]">
+                      {language === 'zh' ? '无' : 'None'}
+                    </span>
+                  )}
+                </div>
+                {associatedFabric && (
+                  <button
+                    type="button"
+                    onClick={() => setActiveViewFabric(associatedFabric)}
+                    className="text-[9px] text-indigo-500 hover:text-indigo-600 font-semibold text-left mt-1.5 self-start cursor-pointer hover:underline"
+                  >
+                    {language === 'zh' ? '查看面料参数 →' : 'View Fabric Specs →'}
+                  </button>
+                )}
+              </div>
             </div>
 
             {/* Design Highlights */}
@@ -680,6 +744,277 @@ ${activeGarment.prompt}
           {language === 'zh' 
             ? '提示：放大后，可在屏幕上按住鼠标左键拖动图片' 
             : 'Tip: Hold left mouse button and drag to pan when zoomed in'}
+        </div>
+      </div>
+    )}
+
+    {/* Standalone A/B comparison view modal */}
+    <GarmentCompare isOpen={isCompareOpen} onClose={() => setIsCompareOpen(false)} />
+
+    {/* View Style DNA Detail Modal */}
+    {activeViewDna && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+        <div className="bg-card border border-border rounded-xl shadow-2xl max-w-lg w-full max-h-[85vh] overflow-y-auto p-5 relative flex flex-col text-left">
+          <button
+            onClick={() => setActiveViewDna(null)}
+            className="absolute top-4 right-4 text-muted-foreground hover:text-foreground hover:scale-105 transition-all"
+          >
+            <X className="w-5 h-5" />
+          </button>
+
+          <div className="flex items-center space-x-2.5 mb-4 border-b border-border pb-3">
+            <Sparkles className="w-5 h-5 text-primary" />
+            <h3 className="text-base font-bold text-foreground">
+              {language === 'zh' ? '风格 DNA 详情' : 'Style DNA Details'}
+            </h3>
+          </div>
+
+          <div className="space-y-4 flex-1">
+            <div>
+              <Label className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold block mb-1 text-left">
+                {language === 'zh' ? '风格名称' : 'Style Name'}
+              </Label>
+              <div className="text-sm font-semibold text-foreground bg-muted/30 px-3 py-2 rounded-lg border border-border/30">
+                {activeViewDna.name}
+              </div>
+            </div>
+
+            {activeViewDna.reference_images && activeViewDna.reference_images.length > 0 && (
+              <div>
+                <Label className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold block mb-1.5 text-left">
+                  {language === 'zh' ? '灵感参考图' : 'Inspiration Images'}
+                </Label>
+                <div className="grid grid-cols-5 gap-2 max-h-36 overflow-y-auto p-1 border border-border/30 rounded-lg bg-muted/10">
+                  {activeViewDna.reference_images.map((img, idx) => (
+                    <a 
+                      key={idx} 
+                      href={img} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="aspect-square rounded border border-border/60 overflow-hidden bg-background hover:opacity-85 transition-opacity"
+                    >
+                      <img src={img} alt="" className="w-full h-full object-cover" />
+                    </a>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="grid grid-cols-2 gap-3 text-xs">
+              <div>
+                <Label className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold block mb-1 text-left">
+                  {language === 'zh' ? '风格关键词' : 'Keywords'}
+                </Label>
+                <div className="flex flex-wrap gap-1 bg-muted/20 p-2 rounded-lg border border-border/20 min-h-[50px]">
+                  {activeViewDna.keywords?.map((kw, i) => (
+                    <span key={i} className="bg-primary/5 text-primary border border-primary/10 rounded px-1.5 py-0.5 text-[10px]">
+                      {kw}
+                    </span>
+                  )) || <span className="text-muted-foreground italic text-[10px]">None</span>}
+                </div>
+              </div>
+
+              <div>
+                <Label className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold block mb-1 text-left">
+                  {language === 'zh' ? '色彩搭配' : 'Colors'}
+                </Label>
+                <div className="flex flex-wrap gap-1 bg-muted/20 p-2 rounded-lg border border-border/20 min-h-[50px]">
+                  {activeViewDna.colors?.map((col, i) => (
+                    <span key={i} className="bg-muted text-muted-foreground border border-border/60 rounded px-1.5 py-0.5 text-[10px]">
+                      {col}
+                    </span>
+                  )) || <span className="text-muted-foreground italic text-[10px]">None</span>}
+                </div>
+              </div>
+
+              <div>
+                <Label className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold block mb-1 text-left">
+                  {language === 'zh' ? '版型廓形' : 'Silhouettes'}
+                </Label>
+                <div className="flex flex-wrap gap-1 bg-muted/20 p-2 rounded-lg border border-border/20 min-h-[50px]">
+                  {activeViewDna.silhouettes?.map((sil, i) => (
+                    <span key={i} className="bg-muted text-muted-foreground border border-border/60 rounded px-1.5 py-0.5 text-[10px]">
+                      {sil}
+                    </span>
+                  )) || <span className="text-muted-foreground italic text-[10px]">None</span>}
+                </div>
+              </div>
+
+              <div>
+                <Label className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold block mb-1 text-left">
+                  {language === 'zh' ? '面料材质' : 'Materials'}
+                </Label>
+                <div className="flex flex-wrap gap-1 bg-muted/20 p-2 rounded-lg border border-border/20 min-h-[50px]">
+                  {activeViewDna.materials?.map((mat, i) => (
+                    <span key={i} className="bg-muted text-muted-foreground border border-border/60 rounded px-1.5 py-0.5 text-[10px]">
+                      {mat}
+                    </span>
+                  )) || <span className="text-muted-foreground italic text-[10px]">None</span>}
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <Label className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold block mb-1 text-left">
+                {language === 'zh' ? '结构设计亮点' : 'Design Details'}
+              </Label>
+              <div className="flex flex-wrap gap-1 bg-muted/20 p-2 rounded-lg border border-border/20 min-h-[40px]">
+                {activeViewDna.details?.map((det, i) => (
+                  <span key={i} className="bg-muted text-muted-foreground border border-border/60 rounded px-1.5 py-0.5 text-[10px]">
+                    {det}
+                  </span>
+                )) || <span className="text-muted-foreground italic text-[10px]">None</span>}
+              </div>
+            </div>
+
+            <div>
+              <Label className="text-[10px] text-destructive uppercase tracking-wider font-semibold block mb-1 text-left">
+                {language === 'zh' ? '避雷元素 (Strictly Avoid)' : 'Avoid elements'}
+              </Label>
+              <div className="flex flex-wrap gap-1 bg-red-500/5 border border-red-500/20 p-2 rounded-lg min-h-[40px]">
+                {activeViewDna.avoid?.map((av, i) => (
+                  <span key={i} className="bg-destructive/10 text-destructive border border-destructive/20 rounded px-1.5 py-0.5 text-[10px]">
+                    {av}
+                  </span>
+                )) || <span className="text-muted-foreground italic text-[10px]">None</span>}
+              </div>
+            </div>
+          </div>
+
+          <Button 
+            type="button" 
+            onClick={() => setActiveViewDna(null)}
+            className="mt-6 w-full"
+          >
+            {language === 'zh' ? '关闭' : 'Close'}
+          </Button>
+        </div>
+      </div>
+    )}
+
+    {/* View Fabric Card Detail Modal */}
+    {activeViewFabric && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+        <div className="bg-card border border-border rounded-xl shadow-2xl max-w-lg w-full max-h-[85vh] overflow-y-auto p-5 relative flex flex-col text-left">
+          <button
+            onClick={() => setActiveViewFabric(null)}
+            className="absolute top-4 right-4 text-muted-foreground hover:text-foreground hover:scale-105 transition-all"
+          >
+            <X className="w-5 h-5" />
+          </button>
+
+          <div className="flex items-center space-x-2.5 mb-4 border-b border-border pb-3">
+            <FileText className="w-5 h-5 text-primary" />
+            <h3 className="text-base font-bold text-foreground">
+              {language === 'zh' ? '面料样卡参数' : 'Fabric Card Specifications'}
+            </h3>
+          </div>
+
+          <div className="space-y-4 flex-1">
+            <div className="flex items-start gap-4">
+              {activeViewFabric.image && (
+                <a 
+                  href={activeViewFabric.image} 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="w-24 h-24 rounded-lg border border-border overflow-hidden bg-muted hover:opacity-85 transition-opacity shrink-0"
+                >
+                  <img src={activeViewFabric.image} alt="" className="w-full h-full object-cover" />
+                </a>
+              )}
+              <div className="flex-1 space-y-3">
+                <div>
+                  <Label className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold block mb-0.5 text-left">
+                    {language === 'zh' ? '面料名称' : 'Fabric Name'}
+                  </Label>
+                  <div className="text-sm font-semibold text-foreground bg-muted/30 px-2.5 py-1.5 rounded-lg border border-border/30">
+                    {activeViewFabric.name}
+                  </div>
+                </div>
+                <div>
+                  <Label className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold block mb-0.5 text-left">
+                    {language === 'zh' ? '成分占比' : 'Composition'}
+                  </Label>
+                  <div className="text-xs text-foreground bg-muted/30 px-2.5 py-1.5 rounded-lg border border-border/30">
+                    {activeViewFabric.composition || (language === 'zh' ? '未指定' : 'Not specified')}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 text-xs">
+              <div>
+                <Label className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold block mb-1 text-left">
+                  {language === 'zh' ? '面料克重 (GSM)' : 'Weight (GSM)'}
+                </Label>
+                <div className="bg-muted/20 p-2.5 rounded-lg border border-border/20 font-semibold text-foreground">
+                  {activeViewFabric.weight_gsm ? `${activeViewFabric.weight_gsm} GSM` : (language === 'zh' ? '未指定' : 'Not specified')}
+                </div>
+              </div>
+
+              <div>
+                <Label className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold block mb-1 text-left">
+                  {language === 'zh' ? '外观表面纹理' : 'Texture'}
+                </Label>
+                <div className="bg-muted/20 p-2.5 rounded-lg border border-border/20 font-semibold text-foreground">
+                  {activeViewFabric.texture || (language === 'zh' ? '未指定' : 'Not specified')}
+                </div>
+              </div>
+
+              <div>
+                <Label className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold block mb-1 text-left">
+                  {language === 'zh' ? '垂坠物理特性' : 'Drape'}
+                </Label>
+                <div className="bg-muted/20 p-2.5 rounded-lg border border-border/20 font-semibold text-foreground">
+                  {activeViewFabric.drape || (language === 'zh' ? '未指定' : 'Not specified')}
+                </div>
+              </div>
+
+              <div>
+                <Label className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold block mb-1 text-left">
+                  {language === 'zh' ? '拉伸弹性' : 'Stretch'}
+                </Label>
+                <div className="bg-muted/20 p-2.5 rounded-lg border border-border/20 font-semibold text-foreground">
+                  {activeViewFabric.stretch || (language === 'zh' ? '未指定' : 'Not specified')}
+                </div>
+              </div>
+
+              <div>
+                <Label className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold block mb-1 text-left">
+                  {language === 'zh' ? '光泽表现' : 'Sheen'}
+                </Label>
+                <div className="bg-muted/20 p-2.5 rounded-lg border border-border/20 font-semibold text-foreground">
+                  {activeViewFabric.sheen || (language === 'zh' ? '未指定' : 'Not specified')}
+                </div>
+              </div>
+
+              <div>
+                <Label className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold block mb-1 text-left">
+                  {language === 'zh' ? '透明度' : 'Transparency'}
+                </Label>
+                <div className="bg-muted/20 p-2.5 rounded-lg border border-border/20 font-semibold text-foreground">
+                  {activeViewFabric.transparency || (language === 'zh' ? '未指定' : 'Not specified')}
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <Label className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold block mb-1 text-left">
+                {language === 'zh' ? '优化生成式纹理描述' : 'Texture Prompt Description'}
+              </Label>
+              <div className="text-xs text-foreground bg-muted/30 p-2.5 rounded-lg border border-border/30 font-mono leading-relaxed whitespace-pre-wrap">
+                {activeViewFabric.prompt_description || (language === 'zh' ? '未指定' : 'Not specified')}
+              </div>
+            </div>
+          </div>
+
+          <Button 
+            type="button" 
+            onClick={() => setActiveViewFabric(null)}
+            className="mt-6 w-full"
+          >
+            {language === 'zh' ? '关闭' : 'Close'}
+          </Button>
         </div>
       </div>
     )}
