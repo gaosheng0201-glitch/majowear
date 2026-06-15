@@ -27,15 +27,15 @@ export default function AgentChat() {
     addMessage,
     chatLoading,
     setChatLoading,
-    language
+    language,
+    displayMode,
+    imageGenModel
   } = useStudioStore()
 
   const t = translations[language]
 
   // Local UI state
   const [chatInput, setChatInput] = useState("")
-  const [displayMode] = useState<'white_background' | 'on_body'>('white_background')
-  const [imageGenModel] = useState<string>('gemini-3.1-flash-image')
   const chatEndRef = useRef<HTMLDivElement>(null)
 
   // Auto-scroll chat

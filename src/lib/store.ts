@@ -108,6 +108,8 @@ interface StudioState {
   messages: ChatMessage[]
   chatLoading: boolean
   language: 'zh' | 'en'
+  displayMode: 'white_background' | 'on_body'
+  imageGenModel: string
   
   setProjects: (projects: Project[]) => void
   addProject: (project: Project) => void
@@ -128,6 +130,8 @@ interface StudioState {
   addMessage: (message: ChatMessage) => void
   setChatLoading: (loading: boolean) => void
   setLanguage: (lang: 'zh' | 'en') => void
+  setDisplayMode: (mode: 'white_background' | 'on_body') => void
+  setImageGenModel: (model: string) => void
 }
 
 export const useStudioStore = create<StudioState>((set) => ({
@@ -143,6 +147,8 @@ export const useStudioStore = create<StudioState>((set) => ({
   messages: [],
   chatLoading: false,
   language: 'zh', // Default to Chinese
+  displayMode: 'white_background',
+  imageGenModel: 'gemini-3.1-flash-image',
 
   setProjects: (projects) => set({ projects }),
   addProject: (project) => set((state) => ({ projects: [project, ...state.projects] })),
@@ -165,5 +171,7 @@ export const useStudioStore = create<StudioState>((set) => ({
   addMessage: (message) => set((state) => ({ messages: [...state.messages, message] })),
   setChatLoading: (chatLoading) => set({ chatLoading }),
   setLanguage: (language) => set({ language }),
+  setDisplayMode: (displayMode) => set({ displayMode }),
+  setImageGenModel: (imageGenModel) => set({ imageGenModel }),
 }))
 

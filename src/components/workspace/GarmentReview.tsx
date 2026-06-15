@@ -25,7 +25,9 @@ export default function GarmentReview() {
     activeFabricCardId,
     setMessages,
     setChatLoading,
-    language
+    language,
+    displayMode,
+    imageGenModel
   } = useStudioStore()
 
   const t = translations[language]
@@ -73,8 +75,8 @@ export default function GarmentReview() {
           fabricCardId: activeGarment.fabric_card_id || activeFabricCardId || undefined,
           parentVersionId: activeGarment.id,
           projectId,
-          displayMode: 'white_background',
-          imageGenModel: 'gemini-3.1-flash-image'
+          displayMode,
+          imageGenModel
         })
       })
 

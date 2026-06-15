@@ -40,7 +40,9 @@ export default function GarmentCanvas() {
     activeFabricCardId,
     setMessages,
     setChatLoading,
-    language
+    language,
+    displayMode,
+    imageGenModel
   } = useStudioStore()
 
   const t = translations[language]
@@ -50,10 +52,6 @@ export default function GarmentCanvas() {
   const [quickPrompt, setQuickPrompt] = useState("")
   const [variantLoading, setVariantLoading] = useState(false)
   const [variantError, setVariantError] = useState<string | null>(null)
-  
-  // Model & Mode selections (will bind to dashboard defaults if we want, or local states)
-  const [displayMode] = useState<'white_background' | 'on_body'>('white_background')
-  const [imageGenModel] = useState<string>('gemini-3.1-flash-image')
 
   if (!activeGarment) {
     // Return empty ready state

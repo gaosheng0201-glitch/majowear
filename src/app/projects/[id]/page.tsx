@@ -29,7 +29,11 @@ export default function ProjectWorkspace() {
     setActiveGarment,
     setCollections,
     language,
-    setLanguage
+    setLanguage,
+    displayMode,
+    setDisplayMode,
+    imageGenModel,
+    setImageGenModel
   } = useStudioStore()
 
   const t = translations[language]
@@ -150,6 +154,32 @@ export default function ProjectWorkspace() {
           </div>
 
           <div className="flex items-center space-x-4">
+            {/* Layout Switcher */}
+            <div className="flex items-center space-x-1.5 text-xs">
+              <span className="text-muted-foreground text-xs">{t.layout}:</span>
+              <select 
+                value={displayMode}
+                onChange={(e: any) => setDisplayMode(e.target.value)}
+                className="bg-card border border-border rounded-lg px-2 py-1 text-xs outline-none focus:ring-1 focus:ring-primary h-8"
+              >
+                <option value="white_background">{t.studioFlatLay}</option>
+                <option value="on_body">{t.onBodyModel}</option>
+              </select>
+            </div>
+
+            {/* Model Switcher */}
+            <div className="flex items-center space-x-1.5 text-xs">
+              <span className="text-muted-foreground text-xs">{t.model}:</span>
+              <select 
+                value={imageGenModel}
+                onChange={(e: any) => setImageGenModel(e.target.value)}
+                className="bg-card border border-border rounded-lg px-2 py-1 text-xs outline-none focus:ring-1 focus:ring-primary h-8 font-mono"
+              >
+                <option value="gemini-3.1-flash-image">{t.geminiImage31}</option>
+                <option value="gemini-3-pro-image">{t.geminiImage3Pro}</option>
+              </select>
+            </div>
+
             {/* Language Switcher */}
             <Button 
               variant="ghost" 
