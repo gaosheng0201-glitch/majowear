@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from "react"
+import { useState, useRef, useEffect } from "react"
 import { useParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -79,6 +79,73 @@ export default function GarmentCanvas() {
 
   const handleMouseUp = () => {
     setIsDragging(false)
+  }
+
+  // Zoom & Pan refs to keep wheel event listener synced with latest values
+  const zoomScaleRef = useRef(zoomScale)
+  const panOffsetRef = useRef(panOffset)
+  const containerRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    zoomScaleRef.current = zoomScale
+    panOffsetRef.current = panOffset
+  }, [zoomScale, panOffset])
+
+  useEffect(() => {
+    if (!isPreviewOpen) return
+
+    const container = containerRef.current
+    if (!container) return
+
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault()
+      const rect = container.getBoundingClientRect()
+      // Mouse coordinates relative to the center of the image container viewport
+      const mx = e.clientX - (rect.left + rect.width / 2)
+      const my = e.clientY - (rect.top + rect.height / 2)
+
+      const zoomFactor = 1.15
+      const s1 = zoomScaleRef.current
+      let s2 = s1
+
+      if (e.deltaY < 0) {
+        s2 = Math.min(4, s1 * zoomFactor)
+      } else {
+        s2 = Math.max(0.5, s1 / zoomFactor)
+      }
+
+      if (s2 === s1) return
+
+      const ratio = s2 / s1
+      const tx = panOffsetRef.current.x * ratio + mx * (1 - ratio)
+      const ty = panOffsetRef.current.y * ratio + my * (1 - ratio)
+
+      setPanOffset({ x: tx, y: ty })
+      setZoomScale(s2)
+    }
+
+    container.addEventListener('wheel', onWheel, { passive: false })
+    return () => {
+      container.removeEventListener('wheel', onWheel)
+    }
+  }, [isPreviewOpen])
+
+  const handleZoomButton = (zoomIn: boolean) => {
+    const s1 = zoomScale
+    let s2 = s1
+    const step = 0.25
+    if (zoomIn) {
+      s2 = Math.min(4, s1 + step)
+    } else {
+      s2 = Math.max(0.5, s1 - step)
+    }
+    if (s2 === s1) return
+    const ratio = s2 / s1
+    setPanOffset(prev => ({
+      x: prev.x * ratio,
+      y: prev.y * ratio
+    }))
+    setZoomScale(s2)
   }
 
   if (!activeGarment) {
@@ -520,6 +587,7 @@ ${activeGarment.prompt}
     {/* Floating preview zoom & pan modal overlay */}
     {isPreviewOpen && activeGarment.images?.[0] && (
       <div 
+        ref={containerRef}
         className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-black/95 backdrop-blur-md animate-in fade-in duration-200"
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
@@ -531,7 +599,7 @@ ${activeGarment.prompt}
           </span>
           <div className="flex items-center space-x-3 bg-zinc-950/60 border border-white/10 rounded-full px-4 py-1.5 backdrop-blur-md shadow-lg">
             <button 
-              onClick={() => setZoomScale(prev => Math.max(0.5, prev - 0.25))}
+              onClick={() => handleZoomButton(false)}
               className="hover:text-indigo-400 transition-colors p-1 cursor-pointer"
               title={language === 'zh' ? '缩小' : 'Zoom Out'}
             >
@@ -541,7 +609,7 @@ ${activeGarment.prompt}
               {Math.round(zoomScale * 100)}%
             </span>
             <button 
-              onClick={() => setZoomScale(prev => Math.min(4, prev + 0.25))}
+              onClick={() => handleZoomButton(true)}
               className="hover:text-indigo-400 transition-colors p-1 cursor-pointer"
               title={language === 'zh' ? '放大' : 'Zoom In'}
             >
