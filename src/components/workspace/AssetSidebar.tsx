@@ -79,7 +79,7 @@ export default function AssetSidebar() {
 
   // Style DNA Upload Form state
   const [styleName, setStyleName] = useState("")
-  const [styleFiles, setStyleFiles] = useState<FileList | null>(null)
+  const [selectedStyleFiles, setSelectedStyleFiles] = useState<File[]>([])
   const [styleUploadLoading, setStyleUploadLoading] = useState(false)
   const [styleFormError, setStyleFormError] = useState<string | null>(null)
 
@@ -223,11 +223,52 @@ export default function AssetSidebar() {
     return publicUrl
   }
 
+  // Helper to close and clear Style DNA modal
+  const closeStyleDnaModal = () => {
+    setIsStyleModalOpen(false)
+    setStyleName("")
+    setSelectedStyleFiles([])
+    setStyleFormError(null)
+  }
+
+  // Helper to close and clear Fabric modal
+  const closeFabricCardModal = () => {
+    setIsFabricModalOpen(false)
+    setFabricName("")
+    setFabricComp("")
+    setFabricWeight("")
+    setFabricFile(null)
+    setFabricFormError(null)
+  }
+
+  // Handle Style DNA file selection with 10-image hard limit
+  const handleStyleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files
+    if (!files) return
+    const newFiles = Array.from(files)
+
+    if (selectedStyleFiles.length + newFiles.length > 10) {
+      setStyleFormError(language === 'zh' ? '最多只能选择 10 张参考图片。' : 'You can select up to 10 reference images.')
+      const remainingCount = 10 - selectedStyleFiles.length
+      if (remainingCount > 0) {
+        setSelectedStyleFiles(prev => [...prev, ...newFiles.slice(0, remainingCount)])
+      }
+    } else {
+      setStyleFormError(null)
+      setSelectedStyleFiles(prev => [...prev, ...newFiles])
+    }
+  }
+
   // Handle Style DNA creation
   const handleCreateStyleDna = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!styleName.trim() || !styleFiles || styleFiles.length === 0) {
-      setStyleFormError("Style name and reference images are required.")
+    if (!styleName.trim() || selectedStyleFiles.length === 0) {
+      setStyleFormError(language === 'zh' ? '风格名称和参考图片都是必填的。' : 'Style name and reference images are required.')
+      return
+    }
+
+    if (selectedStyleFiles.length > 10) {
+      setStyleFormError(language === 'zh' ? '最多只能选择 10 张参考图片。' : 'You can select up to 10 reference images.')
       return
     }
 
@@ -236,8 +277,8 @@ export default function AssetSidebar() {
 
     try {
       const uploadedUrls: string[] = []
-      for (let i = 0; i < styleFiles.length; i++) {
-        const file = styleFiles[i]
+      for (let i = 0; i < selectedStyleFiles.length; i++) {
+        const file = selectedStyleFiles[i]
         const url = await uploadFileToStorage(file, 'styles')
         uploadedUrls.push(url)
       }
@@ -258,9 +299,7 @@ export default function AssetSidebar() {
 
       addStyleDna(result.data)
       setActiveStyleDnaId(result.data.id)
-      setIsStyleModalOpen(false)
-      setStyleName("")
-      setStyleFiles(null)
+      closeStyleDnaModal()
     } catch (err: any) {
       console.error(err)
       setStyleFormError(err.message || "Something went wrong.")
@@ -302,11 +341,7 @@ export default function AssetSidebar() {
 
       addFabricCard(result.data)
       setActiveFabricCardId(result.data.id)
-      setIsFabricModalOpen(false)
-      setFabricName("")
-      setFabricComp("")
-      setFabricWeight("")
-      setFabricFile(null)
+      closeFabricCardModal()
     } catch (err: any) {
       console.error(err)
       setFabricFormError(err.message || "Something went wrong.")
@@ -524,13 +559,12 @@ export default function AssetSidebar() {
         </div>
       </div>
 
-      {/* Style DNA Upload Modal */}
       {isStyleModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm transition-all duration-300">
           <div className="w-full max-w-md bg-card border border-border rounded-xl p-6 shadow-2xl relative animate-in fade-in-50 zoom-in-95 duration-200">
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-xl font-outfit font-bold">{t.addStyleDna}</h3>
-              <Button variant="ghost" size="icon" onClick={() => setIsStyleModalOpen(false)}>
+              <Button variant="ghost" size="icon" onClick={closeStyleDnaModal}>
                 <X className="w-4 h-4" />
               </Button>
             </div>
@@ -562,18 +596,49 @@ export default function AssetSidebar() {
                   type="file"
                   multiple
                   accept="image/*"
-                  onChange={(e) => setStyleFiles(e.target.files)}
-                  required
+                  onChange={handleStyleFileChange}
+                  required={selectedStyleFiles.length === 0}
                   className="bg-muted/50 cursor-pointer"
                 />
-                <p className="text-[10px] text-muted-foreground">{t.styleFormFilesHelp}</p>
+                <p className="text-[10px] text-muted-foreground flex justify-between items-center">
+                  <span>{t.styleFormFilesHelp}</span>
+                  <span>
+                    {language === 'zh' ? '已选：' : 'Selected: '}
+                    <strong className={selectedStyleFiles.length > 10 ? "text-destructive" : "text-primary"}>
+                      {selectedStyleFiles.length}/10
+                    </strong>
+                  </span>
+                </p>
+
+                {selectedStyleFiles.length > 0 && (
+                  <div className="grid grid-cols-5 gap-2 mt-2 border border-border/40 p-2 rounded-lg bg-muted/20 max-h-48 overflow-y-auto">
+                    {selectedStyleFiles.map((file, idx) => {
+                      const url = URL.createObjectURL(file)
+                      return (
+                        <div key={idx} className="relative aspect-square rounded-md overflow-hidden border border-border group bg-muted">
+                          <img src={url} alt={`ref-${idx}`} className="w-full h-full object-cover" />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedStyleFiles(prev => prev.filter((_, i) => i !== idx))
+                              setStyleFormError(null)
+                            }}
+                            className="absolute inset-0 bg-black/60 flex items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-opacity animate-in fade-in duration-150"
+                          >
+                            <X className="w-4 h-4 text-destructive-foreground hover:scale-110 transition-transform" />
+                          </button>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
               </div>
 
               <div className="flex justify-end space-x-2 pt-4">
                 <Button 
                   type="button" 
                   variant="outline" 
-                  onClick={() => setIsStyleModalOpen(false)}
+                  onClick={closeStyleDnaModal}
                   disabled={styleUploadLoading}
                 >
                   {t.cancel}
@@ -594,7 +659,7 @@ export default function AssetSidebar() {
           <div className="w-full max-w-md bg-card border border-border rounded-xl p-6 shadow-2xl relative animate-in fade-in-50 zoom-in-95 duration-200">
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-xl font-outfit font-bold">{t.addFabricTitle}</h3>
-              <Button variant="ghost" size="icon" onClick={() => setIsFabricModalOpen(false)}>
+              <Button variant="ghost" size="icon" onClick={closeFabricCardModal}>
                 <X className="w-4 h-4" />
               </Button>
             </div>
@@ -655,17 +720,32 @@ export default function AssetSidebar() {
                       setFabricFile(files[0])
                     }
                   }}
-                  required
+                  required={!fabricFile}
                   className="bg-muted/50 cursor-pointer"
                 />
                 <p className="text-[10px] text-muted-foreground">{t.fabricFormImageHelp}</p>
+
+                {fabricFile && (
+                  <div className="mt-2 flex justify-center animate-in fade-in duration-150">
+                    <div className="relative w-28 h-28 rounded-md overflow-hidden border border-border group bg-muted shadow-inner">
+                      <img src={URL.createObjectURL(fabricFile)} alt="fabric preview" className="w-full h-full object-cover" />
+                      <button
+                        type="button"
+                        onClick={() => setFabricFile(null)}
+                        className="absolute inset-0 bg-black/60 flex items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-opacity"
+                      >
+                        <X className="w-5 h-5 text-destructive-foreground hover:scale-110 transition-transform" />
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="flex justify-end space-x-2 pt-4">
                 <Button 
                   type="button" 
                   variant="outline" 
-                  onClick={() => setIsFabricModalOpen(false)}
+                  onClick={closeFabricCardModal}
                   disabled={fabricUploadLoading}
                 >
                   {t.cancel}
