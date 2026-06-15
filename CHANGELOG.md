@@ -27,7 +27,7 @@ All notable changes and implementations for the AI Personal Fashion Studio proje
   - **Style DNA Editor**: Integrated full-featured modal dialog to review and edit name, keywords, colors, silhouettes, materials, details, and avoids.
   - **Fabric Swatch Editor**: Integrated modal dialog to review and edit composition, weight GSM, texture, drape, stretch, sheen, transparency, and optimized生图 prompt texture descriptions.
   - Both editors update Postgres and local Zustand stores reactively.
-- **Prompt Input @-Mentions**: Added `@` auto-complete popup inside the Agent Chat input. Designers can type `@` to search and reference any existing garment design card. The frontend automatically parses the referenced garments, extracts their IDs, and queries their details from Supabase to provide the agent with explicit context, resolving issues where the workspace always forces a single active selection.
+- **Prompt Input @-Mentions (Tokenized Pill Input)**: Added `@` auto-complete popup inside the Agent Chat input. Referencing a garment converts it into a high-visibility, interactive Pill Tag block placed inside the input flow. Clicking the `x` on a pill or pressing `Backspace` when the input is empty deletes the entire pill atomically, preventing raw text representation from cluttering the typing flow. The frontend automatically extracts their IDs and queries their specifications to feed to the agent.
 - **Table-Level Privileges for Authenticated Users**: Included global table-level grant privileges (`GRANT ALL ON ALL TABLES...`) in migrations to prevent database permission denied errors from triggering forced session logouts for newly registered users.
 
 
