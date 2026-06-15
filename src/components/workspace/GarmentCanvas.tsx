@@ -22,6 +22,7 @@ import {
 import { createClient } from "@/lib/supabase/client"
 import { useStudioStore, GarmentCard, ChatMessage } from "@/lib/store"
 import { translations } from "@/lib/translations"
+import GarmentReview from "./GarmentReview"
 
 export default function GarmentCanvas() {
   const { id: projectId } = useParams() as { id: string }
@@ -277,10 +278,12 @@ ${activeGarment.prompt}
   const review = activeGarment.schema?.review
 
   return (
-    <div className="w-full max-w-5xl bg-card border border-border rounded-2xl overflow-hidden shadow-xl flex flex-col lg:flex-row h-auto lg:h-[calc(100vh-8.5rem)] animate-in fade-in-30 duration-300">
-      {/* Left Column: Image and Version history */}
-      <div className="lg:w-1/2 bg-muted relative flex flex-col min-h-[400px] lg:min-h-0">
-        <div className="flex-1 relative flex items-center justify-center bg-zinc-900/10">
+    <div className="relative w-full max-w-5xl animate-in fade-in-30 duration-300">
+      <div className="w-full bg-card border border-border rounded-2xl overflow-hidden shadow-xl flex flex-col lg:flex-row h-auto lg:h-[calc(100vh-8.5rem)]">
+        {/* Left Column: Image and Version history */}
+        <div className="lg:w-1/2 bg-muted relative flex flex-col min-h-[400px] lg:min-h-0">
+          <GarmentReview />
+          <div className="flex-1 relative flex items-center justify-center bg-zinc-900/10">
           {activeGarment.images?.[0] ? (
             <>
               {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -306,66 +309,6 @@ ${activeGarment.prompt}
           )}
         </div>
 
-        {/* Compact AI Review TIP Panel */}
-        {review && (
-          <div className="bg-indigo-500/5 border-t border-indigo-500/10 p-4 shrink-0 space-y-2.5">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-indigo-500 flex items-center gap-1.5">
-                <Award className="w-3.5 h-3.5 text-indigo-500" />
-                {t.aiReview}
-              </span>
-              <span className="text-[10px] font-mono bg-indigo-500/10 border border-indigo-500/20 text-indigo-600 dark:text-indigo-400 px-2 py-0.5 rounded-full font-bold">
-                {language === 'zh' ? '综合匹配度' : 'Overall Match'}: {Math.round((review.style_match_score + review.fabric_match_score + review.structure_clarity_score + review.prompt_compliance_score) / 4)}%
-              </span>
-            </div>
-
-            <div className="grid grid-cols-4 gap-2 text-[10px] text-muted-foreground text-center">
-              <div className="bg-card/40 border border-border/40 p-1.5 rounded">
-                <span className="block text-[8px] uppercase tracking-tight">{language === 'zh' ? '风格' : 'Style'}</span>
-                <span className="font-semibold text-foreground">{review.style_match_score}%</span>
-              </div>
-              <div className="bg-card/40 border border-border/40 p-1.5 rounded">
-                <span className="block text-[8px] uppercase tracking-tight">{language === 'zh' ? '面料' : 'Fabric'}</span>
-                <span className="font-semibold text-foreground">{review.fabric_match_score}%</span>
-              </div>
-              <div className="bg-card/40 border border-border/40 p-1.5 rounded">
-                <span className="block text-[8px] uppercase tracking-tight">{language === 'zh' ? '结构' : 'Struct'}</span>
-                <span className="font-semibold text-foreground">{review.structure_clarity_score}%</span>
-              </div>
-              <div className="bg-card/40 border border-border/40 p-1.5 rounded">
-                <span className="block text-[8px] uppercase tracking-tight">{language === 'zh' ? '合规' : 'Comply'}</span>
-                <span className="font-semibold text-foreground">{review.prompt_compliance_score}%</span>
-              </div>
-            </div>
-            
-            {review.issues && review.issues.length > 0 && (
-              <div className="text-[11px] bg-amber-500/10 border border-amber-500/20 text-amber-600 dark:text-amber-400 p-2.5 rounded-lg flex gap-1.5 items-start">
-                <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-                <div>
-                  <span className="font-bold block mb-0.5 text-[10px]">{t.issuesDetected}:</span>
-                  <ul className="list-disc pl-3.5 space-y-0.5">
-                    {review.issues.map((issue, idx) => <li key={idx}>{issue}</li>)}
-                  </ul>
-                </div>
-              </div>
-            )}
-
-            {review.suggested_revision && (
-              <div className="text-[11px] border border-indigo-500/20 bg-indigo-500/5 p-2.5 rounded-lg flex flex-col space-y-1">
-                <span className="font-semibold text-indigo-500 text-[10px]">{t.aiSuggestedRevision}:</span>
-                <p className="italic text-muted-foreground text-[10px]">"{review.suggested_revision}"</p>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => setQuickPrompt(review.suggested_revision)}
-                  className="h-6 text-[10px] hover:bg-indigo-500/10 text-indigo-500 py-0.5 px-2 self-start border border-indigo-500/20"
-                >
-                  {language === 'zh' ? '套用修改参数' : 'Apply changes'}
-                </Button>
-              </div>
-            )}
-          </div>
-        )}
 
         {/* Version History iterations panel */}
         {versions.length > 1 && (
@@ -548,5 +491,8 @@ ${activeGarment.prompt}
         </div>
       </div>
     </div>
-  )
+  </div>
+)
 }
+
+
