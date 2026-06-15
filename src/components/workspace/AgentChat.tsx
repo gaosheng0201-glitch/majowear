@@ -215,7 +215,7 @@ export default function AgentChat() {
       setMessages(updated)
 
     } catch (err: any) {
-      console.error(err)
+      console.warn("Agent generate failed:", err)
       const updated = [...messages]
       const index = updated.findIndex(m => m.id === agentMsgId)
       if (index !== -1) {
