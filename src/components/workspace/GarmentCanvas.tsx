@@ -462,7 +462,7 @@ ${activeGarment.prompt}
                     onClick={() => setQuickPrompt(review.suggested_revision)}
                     className="h-6 text-[10px] hover:bg-indigo-500/10 text-indigo-500 py-0.5 px-2"
                   >
-                    {language === 'zh' ? '⚡ 套用建议修改参数' : '⚡ Use revision prompt'}
+                    {language === 'zh' ? '套用建议修改参数' : 'Use revision prompt'}
                   </Button>
                 </div>
               )}

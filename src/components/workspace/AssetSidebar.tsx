@@ -335,7 +335,7 @@ export default function AssetSidebar() {
                   onClick={() => setSelectedCollectionId(null)}
                 >
                   <FolderOpen className="w-3.5 h-3.5 mr-2 text-primary" />
-                  <span className="truncate">{language === 'zh' ? '📁 所有设计款式' : '📁 All Generated Designs'}</span>
+                  <span className="truncate">{language === 'zh' ? '所有设计款式' : 'All Generated Designs'}</span>
                 </Button>
               </li>
               {collections.map((col) => (
