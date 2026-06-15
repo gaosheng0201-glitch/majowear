@@ -51,6 +51,7 @@ export default function AgentChat() {
   const chatEndRef = useRef<HTMLDivElement>(null)
 
   // Local state for mention dropdown
+  const [referencedGarments, setReferencedGarments] = useState<GarmentCard[]>([])
   const [showMentionDropdown, setShowMentionDropdown] = useState(false)
   const [mentionSearch, setMentionSearch] = useState("")
   const [mentionIndex, setMentionIndex] = useState(-1)
@@ -75,14 +76,27 @@ export default function AgentChat() {
     setShowMentionDropdown(false)
   }
 
-  const handleSelectMention = (garmentTitle: string) => {
-    if (mentionIndex === -1) return
-    const beforeMention = chatInput.slice(0, mentionIndex)
-    const afterMention = chatInput.slice(mentionIndex + mentionSearch.length + 1)
-    setChatInput(`${beforeMention}@${garmentTitle} ${afterMention}`)
+  const handleSelectMention = (garment: GarmentCard) => {
+    if (!referencedGarments.some(x => x.id === garment.id)) {
+      setReferencedGarments(prev => [...prev, garment])
+    }
+    
+    if (mentionIndex !== -1) {
+      const beforeMention = chatInput.slice(0, mentionIndex)
+      const afterMention = chatInput.slice(mentionIndex + mentionSearch.length + 1)
+      setChatInput(beforeMention + afterMention)
+    } else {
+      setChatInput("")
+    }
     setShowMentionDropdown(false)
     setMentionIndex(-1)
     setMentionSearch("")
+  }
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Backspace' && chatInput === '' && referencedGarments.length > 0) {
+      setReferencedGarments(prev => prev.slice(0, -1))
+    }
   }
 
   // Auto-scroll chat
@@ -143,29 +157,27 @@ export default function AgentChat() {
   // Handle Design Agent Request
   const handleSendPrompt = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!chatInput.trim() || chatLoading) return
+    if ((!chatInput.trim() && referencedGarments.length === 0) || chatLoading) return
 
     const promptText = chatInput
     const currentAttachments = [...attachedUrls]
-    
-    // Extract referenced garment card IDs by matching @Title patterns in the prompt text
-    const referencedGarmentIds: string[] = []
-    garmentCards.forEach(g => {
-      if (promptText.includes(`@${g.title}`)) {
-        referencedGarmentIds.push(g.id)
-      }
-    })
+    const referencedGarmentIds = referencedGarments.map(g => g.id)
 
     setChatInput("")
+    setReferencedGarments([])
     setAttachedUrls([])
     setChatLoading(true)
 
     // Add user message
     const userMsgId = Date.now().toString()
+    const formattedUserText = referencedGarments.length > 0 
+      ? referencedGarments.map(g => `@${g.title}`).join(' ') + ' ' + promptText
+      : promptText;
+
     addMessage({ 
       id: userMsgId, 
       role: 'user', 
-      text: promptText,
+      text: formattedUserText,
       image_urls: currentAttachments
     })
 
@@ -390,7 +402,7 @@ export default function AgentChat() {
               <button
                 key={g.id}
                 type="button"
-                onClick={() => handleSelectMention(g.title)}
+                onClick={() => handleSelectMention(g)}
                 className="w-full text-left px-3 py-1.5 hover:bg-accent hover:text-accent-foreground text-xs rounded transition-colors flex items-center justify-between"
               >
                 <span className="font-medium truncate mr-2">{g.title}</span>
@@ -473,23 +485,43 @@ export default function AgentChat() {
             {uploadingAttachment ? <Loader2 className="w-4 h-4 animate-spin text-primary" /> : <Paperclip className="w-4 h-4" />}
           </Button>
 
-          <Input 
-            value={chatInput}
-            onChange={(e) => handleInputChange(e.target.value)}
-            placeholder={
-              !activeStyleDnaId 
-                ? (language === 'zh' ? "请先在左侧选择风格 DNA..." : "Select a Style DNA first...") 
-                : !activeFabricCardId 
-                  ? (language === 'zh' ? "请先在左侧选择面料样卡..." : "Select a Fabric Card first...") 
-                  : t.agentInputPlaceholder
-            }
-            disabled={chatLoading || !activeStyleDnaId || !activeFabricCardId}
-            className="flex-1 bg-muted/50 focus-visible:ring-primary/50 text-xs"
-          />
+          <div className="flex-1 flex flex-wrap items-center gap-1.5 bg-muted/50 border border-border focus-within:border-primary/50 focus-within:ring-1 focus-within:ring-primary/50 rounded-lg px-2 py-1 min-h-[36px] max-h-24 overflow-y-auto">
+            {referencedGarments.map((g) => (
+              <span 
+                key={g.id} 
+                className="inline-flex items-center gap-1 bg-primary/10 text-primary border border-primary/20 rounded px-1.5 py-0.5 text-[10px] font-medium select-none"
+              >
+                <span>@{g.title}</span>
+                <button 
+                  type="button" 
+                  onClick={() => setReferencedGarments(prev => prev.filter(x => x.id !== g.id))}
+                  className="hover:text-destructive transition-colors rounded-full p-0.5"
+                >
+                  <X className="w-2.5 h-2.5" />
+                </button>
+              </span>
+            ))}
+            <input 
+              value={chatInput}
+              onChange={(e) => handleInputChange(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder={
+                referencedGarments.length > 0 
+                  ? "" 
+                  : !activeStyleDnaId 
+                    ? (language === 'zh' ? "请先在左侧选择风格 DNA..." : "Select a Style DNA first...") 
+                    : !activeFabricCardId 
+                      ? (language === 'zh' ? "请先在左侧选择面料样卡..." : "Select a Fabric Card first...") 
+                      : t.agentInputPlaceholder
+              }
+              disabled={chatLoading || !activeStyleDnaId || !activeFabricCardId}
+              className="flex-1 bg-transparent border-0 outline-none focus:ring-0 p-0 text-xs min-w-[60px]"
+            />
+          </div>
           <Button 
             type="submit" 
             size="icon" 
-            disabled={chatLoading || !chatInput.trim() || !activeStyleDnaId || !activeFabricCardId} 
+            disabled={chatLoading || (!chatInput.trim() && referencedGarments.length === 0) || !activeStyleDnaId || !activeFabricCardId} 
             className="shrink-0"
           >
             <Send className="w-4 h-4" />
