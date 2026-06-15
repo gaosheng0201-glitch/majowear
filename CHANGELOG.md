@@ -2,6 +2,21 @@
 
 All notable changes and implementations for the AI Personal Fashion Studio project are documented in this file.
 
+## [1.1.0] - 2026-06-16
+
+### Added
+- **Advanced Semantic Agent Upgrade**
+  - **Conversational Memory & DB Persistence**: Created database table `chat_messages` with Row Level Security (RLS) policies. Saves user and agent messages with support for attachment arrays, grounding footnotes, and garment card references. Dynamically restores multi-turn chat history on workspace load.
+  - **Function Calling & Intent Routing**: Registered `googleSearch`, `generate_garment_design`, `create_style_dna`, and `create_fabric_card` tools on Gemini 2.5 Pro. Agent automatically answers queries via text, generates clothing layouts, or extracts and creates database presets (automatically updating and highlighting them in the sidebar).
+  - **Multimodal Chat Uploads**: Added paperclip file uploader next to chat input. Supports local image uploads, interactive thumbnail previews, and sends files as base64 inline parts to Gemini for visual fashion coordination.
+  - **Google Grounding Citations**: Displays clickable superscript footnotes and details referenced web sources at the bottom of the chat bubble.
+- **Style DNA & Fabric Cards User-Level Scope (Global Presets)**
+  - Re-scoped database queries from `project_id` to `user_id` in workspace page. User-created style DNAs and fabric cards are now shared globally across all user projects.
+- **Manual Parameter Editors**
+  - **Style DNA Editor**: Integrated full-featured modal dialog to review and edit name, keywords, colors, silhouettes, materials, details, and avoids.
+  - **Fabric Swatch Editor**: Integrated modal dialog to review and edit composition, weight GSM, texture, drape, stretch, sheen, transparency, and optimized生图 prompt texture descriptions.
+  - Both editors update Postgres and local Zustand stores reactively.
+
 ## [1.0.0] - 2026-06-15
 
 ### Added
