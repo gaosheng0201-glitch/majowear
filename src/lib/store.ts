@@ -43,6 +43,26 @@ export interface FabricCard {
   created_at: string
 }
 
+export interface Collection {
+  id: string
+  user_id: string
+  project_id?: string
+  name: string
+  description?: string
+  garment_ids: string[]
+  cover_image?: string
+  created_at: string
+}
+
+export interface ChatMessage {
+  id: string
+  role: 'agent' | 'user'
+  text: string
+  garmentCard?: GarmentCard
+  loading?: boolean
+  error?: boolean
+}
+
 export interface GarmentCard {
   id: string
   user_id: string
@@ -59,6 +79,14 @@ export interface GarmentCard {
     pockets?: string
     closures?: string
     details?: string[]
+    review?: {
+      style_match_score: number
+      fabric_match_score: number
+      structure_clarity_score: number
+      prompt_compliance_score: number
+      issues: string[]
+      suggested_revision: string
+    }
   }
   prompt?: string
   negative_prompt?: string
@@ -75,6 +103,10 @@ interface StudioState {
   garmentCards: GarmentCard[]
   activeStyleDnaId: string | null
   activeFabricCardId: string | null
+  activeGarment: GarmentCard | null
+  collections: Collection[]
+  messages: ChatMessage[]
+  chatLoading: boolean
   language: 'zh' | 'en'
   
   setProjects: (projects: Project[]) => void
@@ -88,6 +120,13 @@ interface StudioState {
   addGarmentCard: (garmentCard: GarmentCard) => void
   setActiveStyleDnaId: (id: string | null) => void
   setActiveFabricCardId: (id: string | null) => void
+  setActiveGarment: (garment: GarmentCard | null) => void
+  setCollections: (collections: Collection[]) => void
+  addCollection: (collection: Collection) => void
+  updateCollection: (collection: Collection) => void
+  setMessages: (messages: ChatMessage[]) => void
+  addMessage: (message: ChatMessage) => void
+  setChatLoading: (loading: boolean) => void
   setLanguage: (lang: 'zh' | 'en') => void
 }
 
@@ -99,6 +138,10 @@ export const useStudioStore = create<StudioState>((set) => ({
   garmentCards: [],
   activeStyleDnaId: null,
   activeFabricCardId: null,
+  activeGarment: null,
+  collections: [],
+  messages: [],
+  chatLoading: false,
   language: 'zh', // Default to Chinese
 
   setProjects: (projects) => set({ projects }),
@@ -112,5 +155,15 @@ export const useStudioStore = create<StudioState>((set) => ({
   addGarmentCard: (garmentCard) => set((state) => ({ garmentCards: [garmentCard, ...state.garmentCards] })),
   setActiveStyleDnaId: (activeStyleDnaId) => set({ activeStyleDnaId }),
   setActiveFabricCardId: (activeFabricCardId) => set({ activeFabricCardId }),
+  setActiveGarment: (activeGarment) => set({ activeGarment }),
+  setCollections: (collections) => set({ collections }),
+  addCollection: (collection) => set((state) => ({ collections: [collection, ...state.collections] })),
+  updateCollection: (collection) => set((state) => ({
+    collections: state.collections.map(c => c.id === collection.id ? collection : c)
+  })),
+  setMessages: (messages) => set({ messages }),
+  addMessage: (message) => set((state) => ({ messages: [...state.messages, message] })),
+  setChatLoading: (chatLoading) => set({ chatLoading }),
   setLanguage: (language) => set({ language }),
 }))
+

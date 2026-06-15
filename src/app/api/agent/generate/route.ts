@@ -9,7 +9,7 @@ const garmentResponseSchema: Schema = {
     title: { type: Type.STRING, description: 'A stylish name for this specific garment design' },
     category: { type: Type.STRING, description: 'Clothing category (e.g., Jacket, Pants, Dress, Shirt, Knitwear)' },
     design_rationale: { type: Type.STRING, description: 'Explanation of design choices, combining the style DNA and fabric properties (written in bilingual Chinese/English)' },
-    prompt: { type: Type.STRING, description: 'Optimized English prompt for the image generation model (Flux/Stable Diffusion). Describe ONLY the clothing styling, cut, and material, avoiding background details.' },
+    prompt: { type: Type.STRING, description: 'Optimized English prompt for the image generation model. Describe ONLY the clothing styling, cut, and material, avoiding background details.' },
     negative_prompt: { type: Type.STRING, description: 'Optimized English negative prompt if applicable' },
     schema: { 
       type: Type.OBJECT, 
@@ -20,9 +20,22 @@ const garmentResponseSchema: Schema = {
         sleeves: { type: Type.STRING, description: 'e.g. Raglan long sleeves, Sleeveless, Ribbed cuffs' },
         pockets: { type: Type.STRING, description: 'e.g. Dual utility patch pockets, Hidden zippered seams' },
         closures: { type: Type.STRING, description: 'e.g. Asymmetric front metal zipper, Matte resin buttons' },
-        details: { type: Type.ARRAY, items: { type: Type.STRING }, description: 'Specific design highlights like contrast topstitching, adjustable hem drawstrings, modular zippers.' }
+        details: { type: Type.ARRAY, items: { type: Type.STRING }, description: 'Specific design highlights like contrast topstitching, adjustable hem drawstrings, modular zippers.' },
+        review: {
+          type: Type.OBJECT,
+          description: 'AI review scoring based on constraints',
+          properties: {
+            style_match_score: { type: Type.INTEGER, description: 'Score out of 100 for style matching' },
+            fabric_match_score: { type: Type.INTEGER, description: 'Score out of 100 for fabric compatibility' },
+            structure_clarity_score: { type: Type.INTEGER, description: 'Score out of 100 for design structure clarity' },
+            prompt_compliance_score: { type: Type.INTEGER, description: 'Score out of 100 for prompt compliance' },
+            issues: { type: Type.ARRAY, items: { type: Type.STRING }, description: 'Issues identified (e.g., fabric properties conflict with details, colors outside DNA range)' },
+            suggested_revision: { type: Type.STRING, description: 'A refinement prompt suggestion (e.g., Increase ripstop texturing, add waterproof zippers)' }
+          },
+          required: ['style_match_score', 'fabric_match_score', 'structure_clarity_score', 'prompt_compliance_score', 'issues', 'suggested_revision']
+        }
       },
-      required: ['fit', 'collar', 'sleeves', 'pockets', 'closures', 'details']
+      required: ['fit', 'collar', 'sleeves', 'pockets', 'closures', 'details', 'review']
     }
   },
   required: ['title', 'category', 'design_rationale', 'prompt', 'negative_prompt', 'schema']
@@ -43,6 +56,7 @@ export async function POST(request: Request) {
       styleDnaId, 
       fabricCardId, 
       projectId, 
+      parentVersionId,
       displayMode = 'white_background', // 'white_background' or 'on_body'
       imageGenModel = 'gemini-3.1-flash-image' // Default model
     } = await request.json();
@@ -72,6 +86,16 @@ export async function POST(request: Request) {
       fabricCardData = data;
     }
 
+    let parentGarmentData: any = null;
+    if (parentVersionId) {
+      const { data } = await supabase
+        .from('garment_cards')
+        .select('*')
+        .eq('id', parentVersionId)
+        .single();
+      parentGarmentData = data;
+    }
+
     // 3. Create Generation Task (Pending)
     const { data: task, error: taskError } = await supabase
       .from('generation_tasks')
@@ -79,7 +103,7 @@ export async function POST(request: Request) {
         user_id: user.id,
         project_id: projectId || null,
         status: 'pending',
-        input: { userPrompt, styleDnaId, fabricCardId, displayMode, imageGenModel }
+        input: { userPrompt, styleDnaId, fabricCardId, parentVersionId, displayMode, imageGenModel }
       })
       .select()
       .single();
@@ -115,11 +139,27 @@ Fabric Properties:
 - Prompt description for rendering: ${fabricCardData.prompt_description}
 ` : ''}
 
+${parentGarmentData ? `
+Parent Garment Card to base this variant on:
+- Title: ${parentGarmentData.title}
+- Category: ${parentGarmentData.category}
+- Fit: ${parentGarmentData.schema?.fit}
+- Collar: ${parentGarmentData.schema?.collar}
+- Sleeves: ${parentGarmentData.schema?.sleeves}
+- Pockets: ${parentGarmentData.schema?.pockets}
+- Closures: ${parentGarmentData.schema?.closures}
+- Details: ${parentGarmentData.schema?.details?.join(', ')}
+- Rationale: ${parentGarmentData.design_rationale}
+
+Instruction: Based on this parent design, modify it to create a new variant as requested by the user. You must keep the layout and core characteristics similar, but change the specific attributes requested by the user.
+` : ''}
+
 Reflect the physical reality of the fabric. Generate:
 1. A descriptive title and category.
 2. A design rationale (why these sleeves, collars, fit match this fabric and style).
 3. A structural design schema.
-4. An English rendering prompt for image models.`;
+4. An AI review assessment with scores out of 100 for Style DNA Match, Fabric Compliance, Structural Clarity, and Prompt Compliance, listing any specific issues and a suggested refinement command/revision.
+5. An English rendering prompt for image models.`;
 
     const geminiResponse = await ai.models.generateContent({
       model: 'gemini-3.1-pro-preview', // Pro is recommended for complex reasoning/synthesis
@@ -241,6 +281,7 @@ Reflect the physical reality of the fabric. Generate:
         prompt: finalPrompt,
         negative_prompt: designResult.negative_prompt,
         design_rationale: designResult.design_rationale,
+        parent_version_id: parentVersionId || null
       })
       .select()
       .single();
