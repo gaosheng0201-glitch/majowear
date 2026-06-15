@@ -27,7 +27,9 @@ All notable changes and implementations for the AI Personal Fashion Studio proje
   - **Style DNA Editor**: Integrated full-featured modal dialog to review and edit name, keywords, colors, silhouettes, materials, details, and avoids.
   - **Fabric Swatch Editor**: Integrated modal dialog to review and edit composition, weight GSM, texture, drape, stretch, sheen, transparency, and optimized生图 prompt texture descriptions.
   - Both editors update Postgres and local Zustand stores reactively.
+- **Prompt Input @-Mentions**: Added `@` auto-complete popup inside the Agent Chat input. Designers can type `@` to search and reference any existing garment design card. The frontend automatically parses the referenced garments, extracts their IDs, and queries their details from Supabase to provide the agent with explicit context, resolving issues where the workspace always forces a single active selection.
 - **Table-Level Privileges for Authenticated Users**: Included global table-level grant privileges (`GRANT ALL ON ALL TABLES...`) in migrations to prevent database permission denied errors from triggering forced session logouts for newly registered users.
+
 
 ### Changed
 - **Authentication & Login Redirection**: Refactored the login server action to return `{ success: true }` and handle redirection client-side with Next.js client router, preventing `NEXT_REDIRECT` errors from being caught and swallowed in client-side try-catch blocks.
