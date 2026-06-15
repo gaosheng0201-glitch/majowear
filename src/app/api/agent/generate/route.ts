@@ -267,23 +267,68 @@ Intent Guidelines:
 - If the user wants to save or record a Fabric Card (e.g. "save this fabric", "create fabric card"): call the 'create_fabric_card' tool.
 - For fashion history, fabric queries, greetings, or explanations: answer with plain text, using Google Search grounding to retrieve real citations where appropriate.`;
 
-    const geminiResponse = await ai.models.generateContent({
-      model: 'gemini-2.5-pro',
-      contents: contents,
-      config: {
-        systemInstruction: systemPrompt,
-        tools: [
-          { googleSearch: {} },
+    // Intent Classification using a fast model (gemini-2.5-flash) to avoid API tool clashes
+    let intent = 'SEARCH';
+    try {
+      const classificationResponse = await ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: [
           {
-            functionDeclarations: [
-              generateGarmentTool,
-              createStyleDnaTool,
-              createFabricCardTool
+            role: 'user',
+            parts: [
+              {
+                text: `Classify the user prompt into one of two categories:
+- 'TOOL': The user wants to design a garment, modify a design, create a variant, or save/create/record a Style DNA or Fabric Card.
+- 'SEARCH': The user is asking general questions, fashion history, fabric queries, greetings, or looking for information.
+
+User Prompt: "${userPrompt}"
+
+Output only the category name ('TOOL' or 'SEARCH') without any other text.`
+              }
             ]
           }
         ]
+      });
+      const clsText = classificationResponse.text?.trim().toUpperCase() || 'SEARCH';
+      if (clsText.includes('TOOL')) {
+        intent = 'TOOL';
       }
-    });
+    } catch (e: any) {
+      console.warn('[Agent Chat] Intent classification failed, defaulting to SEARCH:', e.message);
+    }
+
+    console.log('[Agent Chat] Classified intent:', intent);
+
+    let geminiResponse;
+    if (intent === 'TOOL') {
+      geminiResponse = await ai.models.generateContent({
+        model: 'gemini-2.5-pro',
+        contents: contents,
+        config: {
+          systemInstruction: systemPrompt,
+          tools: [
+            {
+              functionDeclarations: [
+                generateGarmentTool,
+                createStyleDnaTool,
+                createFabricCardTool
+              ]
+            }
+          ]
+        }
+      });
+    } else {
+      geminiResponse = await ai.models.generateContent({
+        model: 'gemini-2.5-pro',
+        contents: contents,
+        config: {
+          systemInstruction: systemPrompt,
+          tools: [
+            { googleSearch: {} }
+          ]
+        }
+      });
+    }
 
     let isToolCalled = false;
     let garmentCard = null;
