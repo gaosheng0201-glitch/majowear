@@ -10,6 +10,10 @@ All notable changes and implementations for the AI Personal Fashion Studio proje
   - **Function Calling & Intent Routing**: Registered `googleSearch`, `generate_garment_design`, `create_style_dna`, and `create_fabric_card` tools on Gemini 2.5 Pro. Agent automatically answers queries via text, generates clothing layouts, or extracts and creates database presets (automatically updating and highlighting them in the sidebar).
   - **Multimodal Chat Uploads**: Added paperclip file uploader next to chat input. Supports local image uploads, interactive thumbnail previews, and sends files as base64 inline parts to Gemini for visual fashion coordination.
   - **Google Grounding Citations**: Displays clickable superscript footnotes and details referenced web sources at the bottom of the chat bubble.
+- **Local Dev User Seeding & Session Continuity**
+  - Configured `supabase/seed.sql` to seed the exact developer UUID (`dbfde66d-458a-4146-a4c0-54aa6b3689a4`) and test credentials (`gaosheng1@qq.com` / `123456`) on database resets to prevent needing re-registration.
+- **Self-Healing Session Handling**
+  - Added session self-healing in [page.tsx](file:///d:/majowear/src/app/page.tsx) catch block: when database query fails due to authentication/reset issues, automatically clears the invalid browser session via `signOut()` and redirects to `/login`.
 - **Style DNA & Fabric Cards User-Level Scope (Global Presets)**
   - Re-scoped database queries from `project_id` to `user_id` in workspace page. User-created style DNAs and fabric cards are now shared globally across all user projects.
 - **Manual Parameter Editors**

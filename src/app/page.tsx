@@ -43,6 +43,10 @@ export default function Dashboard() {
         setProjects(data || [])
       } catch (err) {
         console.error("Error loading dashboard data:", err)
+        try {
+          await supabase.auth.signOut()
+        } catch (_) {}
+        router.push('/login')
       } finally {
         setLoading(false)
       }
