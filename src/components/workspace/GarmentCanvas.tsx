@@ -297,6 +297,67 @@ ${activeGarment.prompt}
           )}
         </div>
 
+        {/* Compact AI Review TIP Panel */}
+        {review && (
+          <div className="bg-indigo-500/5 border-t border-indigo-500/10 p-4 shrink-0 space-y-2.5">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-indigo-500 flex items-center gap-1.5">
+                <Award className="w-3.5 h-3.5 text-indigo-500" />
+                {t.aiReview}
+              </span>
+              <span className="text-[10px] font-mono bg-indigo-500/10 border border-indigo-500/20 text-indigo-600 dark:text-indigo-400 px-2 py-0.5 rounded-full font-bold">
+                {language === 'zh' ? '综合匹配度' : 'Overall Match'}: {Math.round((review.style_match_score + review.fabric_match_score + review.structure_clarity_score + review.prompt_compliance_score) / 4)}%
+              </span>
+            </div>
+
+            <div className="grid grid-cols-4 gap-2 text-[10px] text-muted-foreground text-center">
+              <div className="bg-card/40 border border-border/40 p-1.5 rounded">
+                <span className="block text-[8px] uppercase tracking-tight">{language === 'zh' ? '风格' : 'Style'}</span>
+                <span className="font-semibold text-foreground">{review.style_match_score}%</span>
+              </div>
+              <div className="bg-card/40 border border-border/40 p-1.5 rounded">
+                <span className="block text-[8px] uppercase tracking-tight">{language === 'zh' ? '面料' : 'Fabric'}</span>
+                <span className="font-semibold text-foreground">{review.fabric_match_score}%</span>
+              </div>
+              <div className="bg-card/40 border border-border/40 p-1.5 rounded">
+                <span className="block text-[8px] uppercase tracking-tight">{language === 'zh' ? '结构' : 'Struct'}</span>
+                <span className="font-semibold text-foreground">{review.structure_clarity_score}%</span>
+              </div>
+              <div className="bg-card/40 border border-border/40 p-1.5 rounded">
+                <span className="block text-[8px] uppercase tracking-tight">{language === 'zh' ? '合规' : 'Comply'}</span>
+                <span className="font-semibold text-foreground">{review.prompt_compliance_score}%</span>
+              </div>
+            </div>
+            
+            {review.issues && review.issues.length > 0 && (
+              <div className="text-[11px] bg-amber-500/10 border border-amber-500/20 text-amber-600 dark:text-amber-400 p-2.5 rounded-lg flex gap-1.5 items-start">
+                <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                <div>
+                  <span className="font-bold block mb-0.5 text-[10px]">{t.issuesDetected}:</span>
+                  <ul className="list-disc pl-3.5 space-y-0.5">
+                    {review.issues.map((issue, idx) => <li key={idx}>{issue}</li>)}
+                  </ul>
+                </div>
+              </div>
+            )}
+
+            {review.suggested_revision && (
+              <div className="text-[11px] border border-indigo-500/20 bg-indigo-500/5 p-2.5 rounded-lg flex flex-col space-y-1">
+                <span className="font-semibold text-indigo-500 text-[10px]">{t.aiSuggestedRevision}:</span>
+                <p className="italic text-muted-foreground text-[10px]">"{review.suggested_revision}"</p>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => setQuickPrompt(review.suggested_revision)}
+                  className="h-6 text-[10px] hover:bg-indigo-500/10 text-indigo-500 py-0.5 px-2 self-start border border-indigo-500/20"
+                >
+                  {language === 'zh' ? '套用修改参数' : 'Apply changes'}
+                </Button>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Version History iterations panel */}
         {versions.length > 1 && (
           <div className="bg-card/90 border-t border-border p-3 flex flex-col space-y-1.5 shrink-0">
@@ -394,80 +455,6 @@ ${activeGarment.prompt}
               </div>
             )}
           </div>
-
-          {/* AI Review Score Summary */}
-          {review && (
-            <div className="mb-5 bg-indigo-500/5 border border-indigo-500/10 p-3.5 rounded-xl space-y-3">
-              <h4 className="text-xs font-bold text-indigo-500 uppercase tracking-wider flex items-center gap-1.5">
-                <Award className="w-3.5 h-3.5 text-indigo-500" /> {t.aiReview}
-              </h4>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <div className="flex justify-between text-[10px]">
-                    <span className="text-muted-foreground">{t.styleMatch}</span>
-                    <span className="font-bold text-indigo-600 dark:text-indigo-400">{review.style_match_score}%</span>
-                  </div>
-                  <div className="w-full bg-muted rounded-full h-1">
-                    <div className="bg-indigo-500 h-1 rounded-full" style={{ width: `${review.style_match_score}%` }} />
-                  </div>
-                </div>
-                <div className="space-y-1">
-                  <div className="flex justify-between text-[10px]">
-                    <span className="text-muted-foreground">{t.fabricMatch}</span>
-                    <span className="font-bold text-indigo-600 dark:text-indigo-400">{review.fabric_match_score}%</span>
-                  </div>
-                  <div className="w-full bg-muted rounded-full h-1">
-                    <div className="bg-indigo-500 h-1 rounded-full" style={{ width: `${review.fabric_match_score}%` }} />
-                  </div>
-                </div>
-                <div className="space-y-1">
-                  <div className="flex justify-between text-[10px]">
-                    <span className="text-muted-foreground">{t.structureMatch}</span>
-                    <span className="font-bold text-indigo-600 dark:text-indigo-400">{review.structure_clarity_score}%</span>
-                  </div>
-                  <div className="w-full bg-muted rounded-full h-1">
-                    <div className="bg-indigo-500 h-1 rounded-full" style={{ width: `${review.structure_clarity_score}%` }} />
-                  </div>
-                </div>
-                <div className="space-y-1">
-                  <div className="flex justify-between text-[10px]">
-                    <span className="text-muted-foreground">{t.complianceMatch}</span>
-                    <span className="font-bold text-indigo-600 dark:text-indigo-400">{review.prompt_compliance_score}%</span>
-                  </div>
-                  <div className="w-full bg-muted rounded-full h-1">
-                    <div className="bg-indigo-500 h-1 rounded-full" style={{ width: `${review.prompt_compliance_score}%` }} />
-                  </div>
-                </div>
-              </div>
-
-              {review.issues && review.issues.length > 0 && (
-                <div className="text-[11px] bg-amber-500/10 border border-amber-500/20 text-amber-600 dark:text-amber-400 p-2 rounded-lg flex gap-1.5 items-start mt-2">
-                  <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-                  <div>
-                    <span className="font-bold block mb-0.5">{t.issuesDetected}:</span>
-                    <ul className="list-disc pl-3.5 space-y-0.5">
-                      {review.issues.map((issue, idx) => <li key={idx}>{issue}</li>)}
-                    </ul>
-                  </div>
-                </div>
-              )}
-
-              {review.suggested_revision && (
-                <div className="text-[11px] border border-indigo-500/20 bg-indigo-500/5 p-2 rounded-lg mt-2">
-                  <span className="font-semibold block text-indigo-500 mb-1">{t.aiSuggestedRevision}:</span>
-                  <p className="italic text-muted-foreground mb-2">"{review.suggested_revision}"</p>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => setQuickPrompt(review.suggested_revision)}
-                    className="h-6 text-[10px] hover:bg-indigo-500/10 text-indigo-500 py-0.5 px-2"
-                  >
-                    {language === 'zh' ? '套用建议修改参数' : 'Use revision prompt'}
-                  </Button>
-                </div>
-              )}
-            </div>
-          )}
 
           {/* Collection Management Association */}
           <div className="mb-5 border border-border p-3.5 rounded-xl space-y-2.5">
