@@ -84,22 +84,31 @@ export default function GarmentCanvas() {
 
   // Calculate version history (lineage tree)
   const getVersionHistory = (current: GarmentCard): GarmentCard[] => {
-    const history: GarmentCard[] = [current]
-    let parentId = current.parent_version_id
-    
-    // Safety counter to prevent infinite loops in cycles
-    let counter = 0
-    while (parentId && counter < 10) {
-      const parent = garmentCards.find(g => g.id === parentId)
-      if (parent) {
-        history.unshift(parent)
-        parentId = parent.parent_version_id
-      } else {
-        break
+    // Helper to find root ID for any garment node
+    const getRootId = (garment: GarmentCard): string => {
+      let node = garment
+      let parentId = garment.parent_version_id
+      let safety = 0
+      while (parentId && safety < 10) {
+        const parent = garmentCards.find(g => g.id === parentId)
+        if (parent) {
+          node = parent
+          parentId = parent.parent_version_id
+        } else {
+          break
+        }
+        safety++
       }
-      counter++
+      return node.id
     }
-    return history
+
+    const currentRootId = getRootId(current)
+    
+    // Find all garments in the project sharing the same root ID
+    const family = garmentCards.filter(g => getRootId(g) === currentRootId)
+    
+    // Sort chronologically ascending
+    return family.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
   }
 
   const versions = getVersionHistory(activeGarment)
