@@ -20,12 +20,14 @@ import {
   Award,
   X,
   ZoomIn,
-  ZoomOut
+  ZoomOut,
+  GitCompare
 } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
 import { useStudioStore, GarmentCard, ChatMessage } from "@/lib/store"
 import { translations } from "@/lib/translations"
 import GarmentReview from "./GarmentReview"
+import GarmentCompare from "./GarmentCompare"
 
 export default function GarmentCanvas() {
   const { id: projectId } = useParams() as { id: string }
@@ -58,6 +60,7 @@ export default function GarmentCanvas() {
 
   // Image viewer zoom & pan state
   const [isPreviewOpen, setIsPreviewOpen] = useState(false)
+  const [isCompareOpen, setIsCompareOpen] = useState(false)
   const [zoomScale, setZoomScale] = useState(1)
   const [panOffset, setPanOffset] = useState({ x: 0, y: 0 })
   const [isDragging, setIsDragging] = useState(false)
@@ -405,10 +408,22 @@ ${activeGarment.prompt}
         {/* Version History iterations panel */}
         {versions.length > 1 && (
           <div className="bg-card/90 border-t border-border p-3 flex flex-col space-y-1.5 shrink-0">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1">
-              <History className="w-3.5 h-3.5" />
-              {t.versions}
-            </span>
+            <div className="flex justify-between items-center">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1 select-none">
+                <History className="w-3.5 h-3.5" />
+                {t.versions}
+              </span>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setIsCompareOpen(true)}
+                className="text-[10px] h-6 py-0.5 px-2 text-indigo-500 hover:text-indigo-600 hover:bg-indigo-500/5 font-semibold flex items-center gap-1 cursor-pointer"
+                title={language === 'zh' ? '开启 A/B 对比视图' : 'Open A/B Comparison'}
+              >
+                <GitCompare className="w-3.5 h-3.5" />
+                {language === 'zh' ? '设计差异对比' : 'Compare Versions'}
+              </Button>
+            </div>
             <div className="flex items-center gap-1 overflow-x-auto py-1">
               {versions.map((ver, idx) => (
                 <Button
@@ -668,6 +683,9 @@ ${activeGarment.prompt}
         </div>
       </div>
     )}
+
+    {/* Standalone A/B comparison view modal */}
+    <GarmentCompare isOpen={isCompareOpen} onClose={() => setIsCompareOpen(false)} />
   </div>
 )
 }
