@@ -49,6 +49,7 @@ export default function AgentChat() {
   const [attachedUrls, setAttachedUrls] = useState<string[]>([])
   const [uploadingAttachment, setUploadingAttachment] = useState(false)
   const chatEndRef = useRef<HTMLDivElement>(null)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   // Local state for mention dropdown
   const [referencedGarments, setReferencedGarments] = useState<GarmentCard[]>([])
@@ -93,9 +94,12 @@ export default function AgentChat() {
     setMentionSearch("")
   }
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Backspace' && chatInput === '' && referencedGarments.length > 0) {
       setReferencedGarments(prev => prev.slice(0, -1))
+    } else if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      handleSendPrompt(e as any)
     }
   }
 
@@ -103,6 +107,15 @@ export default function AgentChat() {
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
+
+  // Auto-resize textarea height
+  useEffect(() => {
+    const textarea = textareaRef.current
+    if (textarea) {
+      textarea.style.height = 'auto'
+      textarea.style.height = `${textarea.scrollHeight}px`
+    }
+  }, [chatInput])
 
   // Load chat history from Supabase on mount
   useEffect(() => {
@@ -485,11 +498,11 @@ export default function AgentChat() {
             {uploadingAttachment ? <Loader2 className="w-4 h-4 animate-spin text-primary" /> : <Paperclip className="w-4 h-4" />}
           </Button>
 
-          <div className="flex-1 flex flex-wrap items-center gap-1.5 bg-muted/50 border border-border focus-within:border-primary/50 focus-within:ring-1 focus-within:ring-primary/50 rounded-lg px-2 py-1 min-h-[36px] max-h-24 overflow-y-auto">
+          <div className="flex-1 flex flex-wrap items-end gap-1.5 bg-muted/50 border border-border focus-within:border-primary/50 focus-within:ring-1 focus-within:ring-primary/50 rounded-lg px-2.5 py-1.5 min-h-[36px] max-h-36 overflow-y-auto">
             {referencedGarments.map((g) => (
               <span 
                 key={g.id} 
-                className="inline-flex items-center gap-1 bg-primary/10 text-primary border border-primary/20 rounded px-1.5 py-0.5 text-[10px] font-medium select-none"
+                className="inline-flex items-center gap-1 bg-primary/10 text-primary border border-primary/20 rounded px-1.5 py-0.5 text-[10px] font-medium select-none mb-1"
               >
                 <span>@{g.title}</span>
                 <button 
@@ -501,7 +514,9 @@ export default function AgentChat() {
                 </button>
               </span>
             ))}
-            <input 
+            <textarea 
+              ref={textareaRef}
+              rows={1}
               value={chatInput}
               onChange={(e) => handleInputChange(e.target.value)}
               onKeyDown={handleKeyDown}
@@ -515,7 +530,7 @@ export default function AgentChat() {
                       : t.agentInputPlaceholder
               }
               disabled={chatLoading || !activeStyleDnaId || !activeFabricCardId}
-              className="flex-1 bg-transparent border-0 outline-none focus:ring-0 p-0 text-xs min-w-[60px]"
+              className="flex-1 bg-transparent border-0 outline-none focus:ring-0 p-0 text-xs min-w-[120px] resize-none overflow-y-auto max-h-[100px] py-1"
             />
           </div>
           <Button 

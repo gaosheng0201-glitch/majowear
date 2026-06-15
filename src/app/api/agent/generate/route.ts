@@ -296,7 +296,14 @@ Intent Guidelines:
   - Make sure to translate and expand their casual prompt into a detailed English prompt.
 - If the user wants to save or record a Style DNA (e.g. "save this style", "create style DNA"): call the 'create_style_dna' tool.
 - If the user wants to save or record a Fabric Card (e.g. "save this fabric", "create fabric card"): call the 'create_fabric_card' tool.
-- For fashion history, fabric queries, greetings, or explanations: answer with plain text, using Google Search grounding to retrieve real citations where appropriate.`;
+- For fashion history, fabric queries, greetings, or explanations: answer with plain text, using Google Search grounding to retrieve real citations where appropriate.
+
+Semantic Mentions & Comparison Guidelines:
+1. The user's prompt may reference specific garments in their message text using the prefix @ (e.g. "@简约宽松卫衣" or "@经典牛仔裤"). Match these names against the 'Referenced Garment Cards' list provided above.
+2. If the user asks you to compare, differentiate, contrast, or analyze the differences between two or more @-referenced garments:
+   - Provide a beautifully structured markdown comparison table comparing their characteristics side-by-side (including Fit, Collar, Sleeves, Pockets, Closures, Key Details, and Design Rationale).
+   - Below the table, write a professional fashion studio analysis detailing their aesthetic differences, fabric compatibility, and styling synergies (how they can be styled together or which scenarios suit each garment best).
+3. If they ask you to combine or merge elements from different @-referenced garments, analyze their features and use the 'generate_garment_design' tool to output a synthesized design spec.`;
 
     // Intent Classification using a fast model (gemini-3.5-flash) to avoid API tool clashes
     let intent = 'SEARCH';
