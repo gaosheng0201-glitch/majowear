@@ -16,6 +16,75 @@ import { useStudioStore, ChatMessage, GarmentCard } from "@/lib/store"
 import { translations } from "@/lib/translations"
 import { createClient } from "@/lib/supabase/client"
 
+const getRightmostTextNode = (node: Node): Node => {
+  if (node.nodeType === Node.TEXT_NODE) return node
+  const children = node.childNodes
+  if (children.length === 0) return node
+  return getRightmostTextNode(children[children.length - 1])
+}
+
+const deleteTriggerAndQuery = (range: Range, editor: HTMLDivElement): boolean => {
+  let node = range.startContainer
+  let offset = range.startOffset
+
+  if (node.nodeType === Node.ELEMENT_NODE) {
+    const children = node.childNodes
+    if (offset > 0) {
+      node = children[offset - 1]
+      if (node.nodeType === Node.TEXT_NODE) {
+        offset = node.nodeValue?.length || 0
+      }
+    }
+  }
+
+  let found = false
+  let currentNode: Node | null = node
+  let currentOffset = offset
+
+  while (currentNode && !found) {
+    if (currentNode.nodeType === Node.TEXT_NODE) {
+      const val = currentNode.nodeValue || ""
+      const atIndex = val.lastIndexOf('@', currentOffset - 1)
+      if (atIndex !== -1) {
+        range.setStart(currentNode, atIndex)
+        found = true
+        break
+      }
+      
+      const lastSpace = val.lastIndexOf(' ', currentOffset - 1)
+      const lastNbs = val.lastIndexOf('\u00A0', currentOffset - 1)
+      const lastSpaceIndex = Math.max(lastSpace, lastNbs)
+      if (lastSpaceIndex !== -1) {
+        break
+      }
+    }
+
+    let prev: Node | null = currentNode.previousSibling
+    if (!prev) {
+      let parent = currentNode.parentNode
+      while (parent && parent !== editor && !prev) {
+        prev = parent.previousSibling
+        parent = parent.parentNode
+      }
+    }
+    
+    if (prev) {
+      currentNode = getRightmostTextNode(prev)
+      if (currentNode) {
+        currentOffset = currentNode.nodeValue?.length || 0
+      }
+    } else {
+      currentNode = null
+    }
+  }
+
+  if (found) {
+    range.deleteContents()
+    return true
+  }
+  return false
+}
+
 export default function AgentChat() {
   const { id: projectId } = useParams() as { id: string }
   const supabase = createClient()
@@ -113,18 +182,9 @@ export default function AgentChat() {
     }
 
     if (!range) return
-    const textNode = range.startContainer
 
     // 1. Delete the "@query" text from the DOM node
-    if (textNode.nodeType === Node.TEXT_NODE) {
-      const text = textNode.nodeValue || ""
-      const lastAtIndex = text.lastIndexOf('@', range.startOffset - 1)
-      if (lastAtIndex !== -1) {
-        range.setStart(textNode, lastAtIndex)
-        range.setEnd(textNode, range.startOffset)
-        range.deleteContents()
-      }
-    }
+    deleteTriggerAndQuery(range, editor)
 
     // 2. Create the Pill span
     const span = document.createElement('span')
