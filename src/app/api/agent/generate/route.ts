@@ -105,6 +105,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    const body = await request.json();
     const { 
       prompt: userPrompt, 
       styleDnaId, 
@@ -114,128 +115,135 @@ export async function POST(request: Request) {
       referencedGarmentIds = [],
       imageUrls = [], // Multimodal attachments
       displayMode = 'white_background', 
-      imageGenModel = 'gemini-3.1-flash-image' 
-    } = await request.json();
+      imageGenModel = 'gemini-3.1-flash-image',
+      stream = false
+    } = body;
 
     if (!userPrompt) {
       return NextResponse.json({ error: 'User prompt is required' }, { status: 400 });
     }
 
-    // Save user's message to chat_messages first
-    await supabase.from('chat_messages').insert({
-      project_id: projectId || null,
-      user_id: user.id,
-      role: 'user',
-      text: userPrompt,
-      image_urls: imageUrls || []
-    });
+    const runWorkflow = async (
+      onStatus: (status: string, target?: string) => void,
+      onResult: (data: any) => void
+    ) => {
+      onStatus('understanding');
 
-    // 2. Fetch Constraints Style DNA & Fabric parameters if provided
-    let styleDnaData: any = null;
-    if (styleDnaId) {
-      const { data } = await supabase
-        .from('style_dnas')
-        .select('*')
-        .eq('id', styleDnaId)
-        .single();
-      styleDnaData = data;
-    }
-
-    let fabricCardData: any = null;
-    if (fabricCardId) {
-      const { data } = await supabase
-        .from('fabric_cards')
-        .select('*')
-        .eq('id', fabricCardId)
-        .single();
-      fabricCardData = data;
-    }
-
-    let parentGarmentData: any = null;
-    if (parentVersionId) {
-      const { data } = await supabase
-        .from('garment_cards')
-        .select('*')
-        .eq('id', parentVersionId)
-        .single();
-      parentGarmentData = data;
-    }
-
-    let referencedGarmentsData: any[] = [];
-    if (referencedGarmentIds && referencedGarmentIds.length > 0) {
-      const { data } = await supabase
-        .from('garment_cards')
-        .select('*')
-        .in('id', referencedGarmentIds);
-      if (data) {
-        referencedGarmentsData = data;
-      }
-    }
-
-    // 3. Create Generation Task (Pending)
-    const { data: task, error: taskError } = await supabase
-      .from('generation_tasks')
-      .insert({
-        user_id: user.id,
+      // Save user's message to chat_messages first
+      await supabase.from('chat_messages').insert({
         project_id: projectId || null,
-        status: 'pending',
-        input: { userPrompt, styleDnaId, fabricCardId, parentVersionId, referencedGarmentIds, displayMode, imageGenModel }
-      })
-      .select()
-      .single();
+        user_id: user.id,
+        role: 'user',
+        text: userPrompt,
+        image_urls: imageUrls || []
+      });
 
-    if (taskError) {
-      return NextResponse.json({ error: taskError.message }, { status: 500 });
-    }
-
-    // Update status to running
-    await supabase.from('generation_tasks').update({ status: 'running' }).eq('id', task.id);
-
-    // Convert new URLs to Gemini inline parts
-    let imageParts: any[] = [];
-    if (imageUrls && Array.isArray(imageUrls) && imageUrls.length > 0) {
-      imageParts = await Promise.all(
-        imageUrls.map(url => imageUrlToPart(url))
-      );
-    }
-
-    // 4. Fetch last 15 historical messages for context
-    const { data: dbMessages } = await supabase
-      .from('chat_messages')
-      .select('*')
-      .eq('project_id', projectId)
-      .order('created_at', { ascending: false })
-      .limit(15);
-
-    const contents: any[] = [];
-    if (dbMessages && dbMessages.length > 0) {
-      const sortedMessages = [...dbMessages].reverse();
-      for (const msg of sortedMessages) {
-        const role = msg.role === 'user' ? 'user' : 'model';
-        const parts: any[] = [];
-        
-        if (msg.image_urls && msg.image_urls.length > 0) {
-          try {
-            const histParts = await Promise.all(
-              msg.image_urls.map((url: string) => imageUrlToPart(url))
-            );
-            parts.push(...histParts);
-          } catch (err) {
-            console.error("Failed to parse historical image URL", err);
-          }
-        }
-        parts.push({ text: msg.text || '' });
-        contents.push({ role, parts });
+      // 2. Fetch Constraints Style DNA & Fabric parameters if provided
+      let styleDnaData: any = null;
+      if (styleDnaId) {
+        const { data } = await supabase
+          .from('style_dnas')
+          .select('*')
+          .eq('id', styleDnaId)
+          .single();
+        styleDnaData = data;
       }
-    }
 
-    // Append the new message
-    const newParts: any[] = [...imageParts];
-    newParts.push({ text: userPrompt });
-    contents.push({ role: 'user', parts: newParts });
+      let fabricCardData: any = null;
+      if (fabricCardId) {
+        const { data } = await supabase
+          .from('fabric_cards')
+          .select('*')
+          .eq('id', fabricCardId)
+          .single();
+        fabricCardData = data;
+      }
 
-    // 5. Construct Gemini system Instruction
-    const systemPrompt = `You are an expert fashion design AI assistant in a professional fashion studio.
+      let parentGarmentData: any = null;
+      if (parentVersionId) {
+        const { data } = await supabase
+          .from('garment_cards')
+          .select('*')
+          .eq('id', parentVersionId)
+          .single();
+        parentGarmentData = data;
+      }
+
+      let referencedGarmentsData: any[] = [];
+      if (referencedGarmentIds && referencedGarmentIds.length > 0) {
+        const { data } = await supabase
+          .from('garment_cards')
+          .select('*')
+          .in('id', referencedGarmentIds);
+        if (data) {
+          referencedGarmentsData = data;
+        }
+      }
+
+      // 3. Create Generation Task (Pending)
+      const { data: task, error: taskError } = await supabase
+        .from('generation_tasks')
+        .insert({
+          user_id: user.id,
+          project_id: projectId || null,
+          status: 'pending',
+          input: { userPrompt, styleDnaId, fabricCardId, parentVersionId, referencedGarmentIds, displayMode, imageGenModel }
+        })
+        .select()
+        .single();
+
+      if (taskError) {
+        throw new Error(taskError.message);
+      }
+
+      // Update status to running
+      await supabase.from('generation_tasks').update({ status: 'running' }).eq('id', task.id);
+
+      // Convert new URLs to Gemini inline parts
+      let imageParts: any[] = [];
+      if (imageUrls && Array.isArray(imageUrls) && imageUrls.length > 0) {
+        imageParts = await Promise.all(
+          imageUrls.map(url => imageUrlToPart(url))
+        );
+      }
+
+      // 4. Fetch last 15 historical messages for context
+      const { data: dbMessages } = await supabase
+        .from('chat_messages')
+        .select('*')
+        .eq('project_id', projectId)
+        .order('created_at', { ascending: false })
+        .limit(15);
+
+      const contents: any[] = [];
+      if (dbMessages && dbMessages.length > 0) {
+        const sortedMessages = [...dbMessages].reverse();
+        for (const msg of sortedMessages) {
+          const role = msg.role === 'user' ? 'user' : 'model';
+          const parts: any[] = [];
+          
+          if (msg.image_urls && msg.image_urls.length > 0) {
+            try {
+              const histParts = await Promise.all(
+                msg.image_urls.map((url: string) => imageUrlToPart(url))
+              );
+              parts.push(...histParts);
+            } catch (err) {
+              console.error("Failed to parse historical image URL", err);
+            }
+          }
+          parts.push({ text: msg.text || '' });
+          contents.push({ role, parts });
+        }
+      }
+
+      // Append the new message
+      const newParts: any[] = [...imageParts];
+      newParts.push({ text: userPrompt });
+      contents.push({ role: 'user', parts: newParts });
+
+      // 5. Construct Gemini system Instruction
+      const systemPrompt = `You are an expert fashion design AI assistant in a professional fashion studio.
 Your role is to collaborate with designers. You have access to tools for creating designs, saving style DNA presets, and saving fabric presets.
 When appropriate, use the tools. Otherwise, answer questions directly using your knowledge and Google Search grounding.
 
@@ -305,325 +313,387 @@ Semantic Mentions & Comparison Guidelines:
    - Below the table, write a professional fashion studio analysis detailing their aesthetic differences, fabric compatibility, and styling synergies (how they can be styled together or which scenarios suit each garment best).
 3. If they ask you to combine or merge elements from different @-referenced garments, analyze their features and use the 'generate_garment_design' tool to output a synthesized design spec.`;
 
-    // Intent Classification using a fast model (gemini-3.5-flash) to avoid API tool clashes
-    let intent = 'SEARCH';
-    try {
-      const classificationResponse = await ai.models.generateContent({
-        model: 'gemini-3.5-flash',
-        contents: [
-          {
-            role: 'user',
-            parts: [
-              {
-                text: `Classify the user prompt into one of two categories:
-- 'TOOL': The user wants to design a garment, modify a design, create a variant, or save/create/record a Style DNA or Fabric Card.
-- 'SEARCH': The user is asking general questions, fashion history, fabric queries, greetings, or looking for information.
+      // Intent Classification using a fast model (gemini-3.5-flash) to avoid API tool clashes
+      let intent = 'SEARCH';
+      try {
+        const classificationResponse = await ai.models.generateContent({
+          model: 'gemini-3.5-flash',
+          contents: [
+            {
+              role: 'user',
+              parts: [
+                {
+                  text: `Classify the user prompt into one of three categories:
+- 'DEEP_THINK': The user is asking for deep analysis, comparison of garments, resolving material/style conflicts, aesthetic reasoning, or explicitly requested "thinking" or "reasoning" (e.g., using words like "思考", "分析", "为什么", "推导").
+- 'TOOL': The user wants to design a garment, modify a design, create a variant, or save/create/record a Style DNA or Fabric Card (excluding complex comparisons/analyses).
+- 'SEARCH': General quick Q&A, fashion facts, greeting, simple questions.
 
 User Prompt: "${userPrompt}"
 
-Output only the category name ('TOOL' or 'SEARCH') without any other text.`
-              }
-            ]
-          }
-        ]
-      });
-      const clsText = classificationResponse.text?.trim().toUpperCase() || 'SEARCH';
-      if (clsText.includes('TOOL')) {
-        intent = 'TOOL';
-      }
-    } catch (e: any) {
-      console.warn('[Agent Chat] Intent classification failed, defaulting to SEARCH:', e.message);
-    }
-
-    console.log('[Agent Chat] Classified intent:', intent);
-
-    let geminiResponse;
-    if (intent === 'TOOL') {
-      geminiResponse = await ai.models.generateContent({
-        model: 'gemini-2.5-pro',
-        contents: contents,
-        config: {
-          systemInstruction: systemPrompt,
-          tools: [
-            {
-              functionDeclarations: [
-                generateGarmentTool,
-                createStyleDnaTool,
-                createFabricCardTool
+Output only the category name ('DEEP_THINK', 'TOOL' or 'SEARCH') without any other text.`
+                }
               ]
             }
           ]
+        });
+        const clsText = classificationResponse.text?.trim().toUpperCase() || 'SEARCH';
+        if (clsText.includes('DEEP_THINK')) {
+          intent = 'DEEP_THINK';
+        } else if (clsText.includes('TOOL')) {
+          intent = 'TOOL';
         }
-      });
-    } else {
-      geminiResponse = await ai.models.generateContent({
-        model: 'gemini-2.5-pro',
+      } catch (e: any) {
+        console.warn('[Agent Chat] Intent classification failed, defaulting to SEARCH:', e.message);
+      }
+
+      console.log('[Agent Chat] Classified intent:', intent);
+
+      const hasThinkingKeywords = /思考|分析|为什么|推导|对比|think|reason|analyze|compare/i.test(userPrompt);
+      const useProReasoning = (intent === 'DEEP_THINK') || hasThinkingKeywords;
+
+      let modelName = 'gemini-3.5-flash';
+      let thinkingConfigVal: any = { thinkingLevel: 'MEDIUM' };
+
+      if (useProReasoning) {
+        modelName = 'gemini-3.1-pro-preview';
+        thinkingConfigVal = { thinkingLevel: 'HIGH' };
+        onStatus('thinking');
+      } else {
+        onStatus('searching');
+      }
+
+      const isToolBranch = intent === 'TOOL';
+      const tools = isToolBranch 
+        ? [{ functionDeclarations: [generateGarmentTool, createStyleDnaTool, createFabricCardTool] }]
+        : [{ googleSearch: {} }];
+
+      console.log(`[Agent Chat] Routing to: ${modelName} with intent: ${intent}`);
+
+      const geminiResponse = await ai.models.generateContent({
+        model: modelName,
         contents: contents,
         config: {
           systemInstruction: systemPrompt,
-          tools: [
-            { googleSearch: {} }
-          ]
+          thinkingConfig: thinkingConfigVal,
+          tools: tools
         }
       });
-    }
 
-    let isToolCalled = false;
-    let garmentCard = null;
-    let createdStyleDna = null;
-    let createdFabricCard = null;
-    let replyText = "";
-
-    const functionCalls = geminiResponse.functionCalls;
-    if (functionCalls && functionCalls.length > 0) {
-      const call = functionCalls[0];
-      isToolCalled = true;
-
-      if (call.name === 'generate_garment_design') {
-        const args = call.args as any;
-        
-        let finalPrompt = args.prompt;
-        if (displayMode === 'white_background') {
-          finalPrompt += `, professional studio fashion product photography, clean solid white background, flat lay or ghost mannequin style, high resolution detail, 8k, photorealistic`;
-        } else {
-          finalPrompt += `, professional fashion editorial photoshoot, model wearing the garment, full body shot, outdoor city street style or studio lighting, realistic skin textures, 8k, cinematic lighting, photorealistic`;
-        }
-
-        let generatedImageBuffer: Buffer;
-        let mimeType = 'image/png';
-
-        try {
-          if (imageGenModel.startsWith('gemini-')) {
-            const imageGenResponse = await ai.models.generateContent({
-              model: imageGenModel,
-              contents: [{ role: 'user', parts: [{ text: finalPrompt }] }],
-              config: {
-                responseModalities: ['IMAGE'],
-                imageConfig: { aspectRatio: '1:1' }
-              }
-            });
-
-            const part = imageGenResponse.candidates?.[0]?.content?.parts?.find((p: any) => p.inlineData);
-            const base64ImageBytes = part?.inlineData?.data;
-            if (!base64ImageBytes) {
-              throw new Error('No image bytes returned in Gemini response');
-            }
-            mimeType = part?.inlineData?.mimeType || 'image/png';
-            generatedImageBuffer = Buffer.from(base64ImageBytes, 'base64');
-          } else {
-            const imageGenResponse = await ai.models.generateImages({
-              model: imageGenModel,
-              prompt: finalPrompt,
-              config: {
-                numberOfImages: 1,
-                outputMimeType: 'image/png',
-                aspectRatio: '1:1',
-              },
-            });
-
-            const generatedImage = imageGenResponse.generatedImages?.[0];
-            const base64ImageBytes = generatedImage?.image?.imageBytes;
-            if (!base64ImageBytes) {
-              throw new Error('No image bytes returned in Gemini response');
-            }
-            generatedImageBuffer = Buffer.from(base64ImageBytes, 'base64');
-          }
-        } catch (imgErr: any) {
-          console.error('Image Generation Error:', imgErr);
-          await supabase.from('generation_tasks')
-            .update({ status: 'failed', error: imgErr.message || 'Image generation failed' })
-            .eq('id', task.id);
-          return NextResponse.json({ error: imgErr.message || 'Image generation failed' }, { status: 500 });
-        }
-
-        const filename = `${user.id}/${task.id}_design.png`;
-        const { error: uploadError } = await supabase.storage
-          .from('design_assets')
-          .upload(filename, generatedImageBuffer, {
-            contentType: mimeType,
-            upsert: true
-          });
-
-        if (uploadError) {
-          await supabase.from('generation_tasks')
-            .update({ status: 'failed', error: `Storage upload failed: ${uploadError.message}` })
-            .eq('id', task.id);
-          return NextResponse.json({ error: `Storage upload failed: ${uploadError.message}` }, { status: 500 });
-        }
-
-        const { data: { publicUrl } } = supabase.storage
-          .from('design_assets')
-          .getPublicUrl(filename);
-
-        const review = {
-          style_match_score: args.review_style_match_score || 85,
-          fabric_match_score: args.review_fabric_match_score || 85,
-          structure_clarity_score: args.review_structure_clarity_score || 85,
-          prompt_compliance_score: args.review_prompt_compliance_score || 85,
-          issues: args.review_issues || [],
-          suggested_revision: args.review_suggested_revision || ""
-        };
-
-        const { data: insertedGarment, error: garmentError } = await supabase
-          .from('garment_cards')
-          .insert({
-            user_id: user.id,
-            project_id: projectId || null,
-            style_dna_id: styleDnaId || null,
-            fabric_card_id: fabricCardId || null,
-            title: args.title,
-            category: args.category,
-            images: [publicUrl],
-            schema: {
-              fit: args.fit,
-              collar: args.collar,
-              sleeves: args.sleeves,
-              pockets: args.pockets,
-              closures: args.closures,
-              details: args.details || [],
-              review: review
-            },
-            prompt: finalPrompt,
-            negative_prompt: args.negative_prompt,
-            design_rationale: args.design_rationale,
-            parent_version_id: args.is_new_design === true ? null : (args.parent_id || parentVersionId || null)
-          })
-          .select()
-          .single();
-
-        if (garmentError) {
-          await supabase.from('generation_tasks')
-            .update({ status: 'failed', error: `Garment card creation failed: ${garmentError.message}` })
-            .eq('id', task.id);
-          return NextResponse.json({ error: garmentError.message }, { status: 500 });
-        }
-
-        garmentCard = insertedGarment;
-        replyText = `我已为您生成了 "${garmentCard.title}" 的设计款式卡。以下是设计原理：\n\n${garmentCard.design_rationale}`;
-
-        await supabase.from('chat_messages').insert({
-          project_id: projectId || null,
-          user_id: user.id,
-          role: 'agent',
-          text: replyText,
-          garment_card_id: garmentCard.id
-        });
-
-        await supabase.from('generation_tasks')
-          .update({ 
-            status: 'success', 
-            output: { garmentCardId: garmentCard.id, imageUrl: publicUrl } 
-          })
-          .eq('id', task.id);
-
-      } else if (call.name === 'create_style_dna') {
-        const args = call.args as any;
-        
-        const { data: styleDna, error: styleError } = await supabase
-          .from('style_dnas')
-          .insert({
-            user_id: user.id,
-            project_id: projectId || null,
-            name: args.name,
-            reference_images: imageUrls || [],
-            keywords: args.keywords || [],
-            colors: args.colors || [],
-            silhouettes: args.silhouettes || [],
-            materials: args.materials || [],
-            details: args.details || [],
-            avoid: args.avoid || []
-          })
-          .select()
-          .single();
-
-        if (styleError) {
-          throw styleError;
-        }
-
-        createdStyleDna = styleDna;
-        replyText = `我已为您成功录入风格基因预设："${createdStyleDna.name}"。\n\n**关键词**: ${createdStyleDna.keywords.join(', ')}\n**色彩**: ${createdStyleDna.colors.join(', ')}\n**廓形**: ${createdStyleDna.silhouettes.join(', ')}`;
-
-        await supabase.from('chat_messages').insert({
-          project_id: projectId || null,
-          user_id: user.id,
-          role: 'agent',
-          text: replyText,
-          grounding_metadata: { createdStyleDnaId: createdStyleDna.id }
-        });
-
-        await supabase.from('generation_tasks')
-          .update({ status: 'success', output: { createdStyleDnaId: createdStyleDna.id } })
-          .eq('id', task.id);
-
-      } else if (call.name === 'create_fabric_card') {
-        const args = call.args as any;
-
-        const { data: fabricCard, error: fabricError } = await supabase
-          .from('fabric_cards')
-          .insert({
-            user_id: user.id,
-            project_id: projectId || null,
-            name: args.name,
-            image: imageUrls && imageUrls.length > 0 ? imageUrls[0] : null,
-            composition: args.composition,
-            weight_gsm: args.weight_gsm,
-            texture: args.texture,
-            drape: args.drape,
-            stretch: args.stretch,
-            sheen: args.sheen,
-            transparency: args.transparency,
-            prompt_description: args.prompt_description
-          })
-          .select()
-          .single();
-
-        if (fabricError) {
-          throw fabricError;
-        }
-
-        createdFabricCard = fabricCard;
-        replyText = `我已为您成功录入面料样卡预设："${createdFabricCard.name}"。\n\n**成分**: ${createdFabricCard.composition}\n**厚度/克重**: ${createdFabricCard.weight_gsm ? `${createdFabricCard.weight_gsm} GSM` : '未指定'}\n**纹理**: ${createdFabricCard.texture}\n**生图描述**: ${createdFabricCard.prompt_description}`;
-
-        await supabase.from('chat_messages').insert({
-          project_id: projectId || null,
-          user_id: user.id,
-          role: 'agent',
-          text: replyText,
-          grounding_metadata: { createdFabricCardId: createdFabricCard.id }
-        });
-
-        await supabase.from('generation_tasks')
-          .update({ status: 'success', output: { createdFabricCardId: createdFabricCard.id } })
-          .eq('id', task.id);
-      }
-    } else {
-      replyText = geminiResponse.text || '';
+      let isToolCalled = false;
+      let garmentCard = null;
+      let createdStyleDna = null;
+      let createdFabricCard = null;
+      let replyText = "";
       const groundingMetadata = geminiResponse.candidates?.[0]?.groundingMetadata || null;
 
-      await supabase.from('chat_messages').insert({
-        project_id: projectId || null,
-        user_id: user.id,
-        role: 'agent',
-        text: replyText,
-        grounding_metadata: groundingMetadata
-      });
+      const functionCalls = geminiResponse.functionCalls;
+      if (functionCalls && functionCalls.length > 0) {
+        const call = functionCalls[0];
+        isToolCalled = true;
 
-      await supabase.from('generation_tasks')
-        .update({ status: 'success', output: { textReply: replyText } })
-        .eq('id', task.id);
-    }
+        if (call.name === 'generate_garment_design') {
+          onStatus('rendering', 'garment');
+          const args = call.args as any;
+          
+          let finalPrompt = args.prompt;
+          if (displayMode === 'white_background') {
+            finalPrompt += `, professional studio fashion product photography, clean solid white background, flat lay or ghost mannequin style, high resolution detail, 8k, photorealistic`;
+          } else {
+            finalPrompt += `, professional fashion editorial photoshoot, model wearing the garment, full body shot, outdoor city street style or studio lighting, realistic skin textures, 8k, cinematic lighting, photorealistic`;
+          }
 
-    return NextResponse.json({
-      success: true,
-      data: {
+          let generatedImageBuffer: Buffer;
+          let mimeType = 'image/png';
+
+          try {
+            if (imageGenModel.startsWith('gemini-')) {
+              const imageGenResponse = await ai.models.generateContent({
+                model: imageGenModel,
+                contents: [{ role: 'user', parts: [{ text: finalPrompt }] }],
+                config: {
+                  responseModalities: ['IMAGE'],
+                  imageConfig: { aspectRatio: '1:1' }
+                }
+              });
+
+              const part = imageGenResponse.candidates?.[0]?.content?.parts?.find((p: any) => p.inlineData);
+              const base64ImageBytes = part?.inlineData?.data;
+              if (!base64ImageBytes) {
+                throw new Error('No image bytes returned in Gemini response');
+              }
+              mimeType = part?.inlineData?.mimeType || 'image/png';
+              generatedImageBuffer = Buffer.from(base64ImageBytes, 'base64');
+            } else {
+              const imageGenResponse = await ai.models.generateImages({
+                model: imageGenModel,
+                prompt: finalPrompt,
+                config: {
+                  numberOfImages: 1,
+                  outputMimeType: 'image/png',
+                  aspectRatio: '1:1',
+                },
+              });
+
+              const generatedImage = imageGenResponse.generatedImages?.[0];
+              const base64ImageBytes = generatedImage?.image?.imageBytes;
+              if (!base64ImageBytes) {
+                throw new Error('No image bytes returned in Gemini response');
+              }
+              generatedImageBuffer = Buffer.from(base64ImageBytes, 'base64');
+            }
+          } catch (imgErr: any) {
+            console.error('Image Generation Error:', imgErr);
+            await supabase.from('generation_tasks')
+              .update({ status: 'failed', error: imgErr.message || 'Image generation failed' })
+              .eq('id', task.id);
+            throw imgErr;
+          }
+
+          onStatus('saving');
+
+          const filename = `${user.id}/${task.id}_design.png`;
+          const { error: uploadError } = await supabase.storage
+            .from('design_assets')
+            .upload(filename, generatedImageBuffer, {
+              contentType: mimeType,
+              upsert: true
+            });
+
+          if (uploadError) {
+            await supabase.from('generation_tasks')
+              .update({ status: 'failed', error: `Storage upload failed: ${uploadError.message}` })
+              .eq('id', task.id);
+            throw new Error(`Storage upload failed: ${uploadError.message}`);
+          }
+
+          const { data: { publicUrl } } = supabase.storage
+            .from('design_assets')
+            .getPublicUrl(filename);
+
+          const review = {
+            style_match_score: args.review_style_match_score || 85,
+            fabric_match_score: args.review_fabric_match_score || 85,
+            structure_clarity_score: args.review_structure_clarity_score || 85,
+            prompt_compliance_score: args.review_prompt_compliance_score || 85,
+            issues: args.review_issues || [],
+            suggested_revision: args.review_suggested_revision || ""
+          };
+
+          const { data: insertedGarment, error: garmentError } = await supabase
+            .from('garment_cards')
+            .insert({
+              user_id: user.id,
+              project_id: projectId || null,
+              style_dna_id: styleDnaId || null,
+              fabric_card_id: fabricCardId || null,
+              title: args.title,
+              category: args.category,
+              images: [publicUrl],
+              schema: {
+                fit: args.fit,
+                collar: args.collar,
+                sleeves: args.sleeves,
+                pockets: args.pockets,
+                closures: args.closures,
+                details: args.details || [],
+                review: review
+              },
+              prompt: finalPrompt,
+              negative_prompt: args.negative_prompt,
+              design_rationale: args.design_rationale,
+              parent_version_id: args.is_new_design === true ? null : (args.parent_id || parentVersionId || null)
+            })
+            .select()
+            .single();
+
+          if (garmentError) {
+            await supabase.from('generation_tasks')
+              .update({ status: 'failed', error: `Garment card creation failed: ${garmentError.message}` })
+              .eq('id', task.id);
+            throw garmentError;
+          }
+
+          garmentCard = insertedGarment;
+          replyText = `我已为您生成了 "${garmentCard.title}" 的设计款式卡。以下是设计原理：\n\n${garmentCard.design_rationale}`;
+
+          await supabase.from('chat_messages').insert({
+            project_id: projectId || null,
+            user_id: user.id,
+            role: 'agent',
+            text: replyText,
+            garment_card_id: garmentCard.id
+          });
+
+          await supabase.from('generation_tasks')
+            .update({ 
+              status: 'success', 
+              output: { garmentCardId: garmentCard.id, imageUrl: publicUrl } 
+            })
+            .eq('id', task.id);
+
+        } else if (call.name === 'create_style_dna') {
+          onStatus('rendering', 'style');
+          const args = call.args as any;
+          
+          const { data: styleDna, error: styleError } = await supabase
+            .from('style_dnas')
+            .insert({
+              user_id: user.id,
+              project_id: projectId || null,
+              name: args.name,
+              reference_images: imageUrls || [],
+              keywords: args.keywords || [],
+              colors: args.colors || [],
+              silhouettes: args.silhouettes || [],
+              materials: args.materials || [],
+              details: args.details || [],
+              avoid: args.avoid || []
+            })
+            .select()
+            .single();
+
+          if (styleError) {
+            throw styleError;
+          }
+
+          onStatus('saving');
+
+          createdStyleDna = styleDna;
+          replyText = `我已为您成功录入风格基因预设："${createdStyleDna.name}"。\n\n**关键词**: ${createdStyleDna.keywords.join(', ')}\n**色彩**: ${createdStyleDna.colors.join(', ')}\n**廓形**: ${createdStyleDna.silhouettes.join(', ')}`;
+
+          await supabase.from('chat_messages').insert({
+            project_id: projectId || null,
+            user_id: user.id,
+            role: 'agent',
+            text: replyText,
+            grounding_metadata: { createdStyleDnaId: createdStyleDna.id }
+          });
+
+          await supabase.from('generation_tasks')
+            .update({ status: 'success', output: { createdStyleDnaId: createdStyleDna.id } })
+            .eq('id', task.id);
+
+        } else if (call.name === 'create_fabric_card') {
+          onStatus('rendering', 'fabric');
+          const args = call.args as any;
+
+          const { data: fabricCard, error: fabricError } = await supabase
+            .from('fabric_cards')
+            .insert({
+              user_id: user.id,
+              project_id: projectId || null,
+              name: args.name,
+              image: imageUrls && imageUrls.length > 0 ? imageUrls[0] : null,
+              composition: args.composition,
+              weight_gsm: args.weight_gsm,
+              texture: args.texture,
+              drape: args.drape,
+              stretch: args.stretch,
+              sheen: args.sheen,
+              transparency: args.transparency,
+              prompt_description: args.prompt_description
+            })
+            .select()
+            .single();
+
+          if (fabricError) {
+            throw fabricError;
+          }
+
+          onStatus('saving');
+
+          createdFabricCard = fabricCard;
+          replyText = `我已为您成功录入面料样卡预设："${createdFabricCard.name}"。\n\n**成分**: ${createdFabricCard.composition}\n**厚度/克重**: ${createdFabricCard.weight_gsm ? `${createdFabricCard.weight_gsm} GSM` : '未指定'}\n**纹理**: ${createdFabricCard.texture}\n**生图描述**: ${createdFabricCard.prompt_description}`;
+
+          await supabase.from('chat_messages').insert({
+            project_id: projectId || null,
+            user_id: user.id,
+            role: 'agent',
+            text: replyText,
+            grounding_metadata: { createdFabricCardId: createdFabricCard.id }
+          });
+
+          await supabase.from('generation_tasks')
+            .update({ status: 'success', output: { createdFabricCardId: createdFabricCard.id } })
+            .eq('id', task.id);
+        }
+      } else {
+        onStatus('saving');
+        replyText = geminiResponse.text || '';
+
+        await supabase.from('chat_messages').insert({
+          project_id: projectId || null,
+          user_id: user.id,
+          role: 'agent',
+          text: replyText,
+          grounding_metadata: groundingMetadata
+        });
+
+        await supabase.from('generation_tasks')
+          .update({ status: 'success', output: { textReply: replyText } })
+          .eq('id', task.id);
+      }
+
+      onResult({
         isToolCalled,
         replyText,
         garmentCard,
         createdStyleDna,
         createdFabricCard,
-        groundingMetadata: geminiResponse.candidates?.[0]?.groundingMetadata || null
-      }
-    });
+        groundingMetadata
+      });
+    };
+
+    if (stream) {
+      const encoder = new TextEncoder();
+      const customStream = new ReadableStream({
+        async start(controller) {
+          const sendStatus = (status: string, target?: string) => {
+            const data = JSON.stringify({ type: 'status', status, target });
+            controller.enqueue(encoder.encode(data + '\n'));
+          };
+          
+          const sendError = (message: string) => {
+            const data = JSON.stringify({ type: 'error', message });
+            controller.enqueue(encoder.encode(data + '\n'));
+          };
+
+          const sendResult = (resultData: any) => {
+            const data = JSON.stringify({ type: 'result', data: resultData });
+            controller.enqueue(encoder.encode(data + '\n'));
+          };
+
+          try {
+            await runWorkflow(sendStatus, sendResult);
+          } catch (err: any) {
+            console.error('Error in workflow streaming:', err);
+            sendError(err?.message || 'Server execution error');
+          } finally {
+            controller.close();
+          }
+        }
+      });
+
+      return new Response(customStream, {
+        headers: {
+          'Content-Type': 'text/plain; charset=utf-8',
+          'Cache-Control': 'no-cache',
+          'Connection': 'keep-alive',
+        }
+      });
+    } else {
+      // Non-streaming fallback
+      let finalResultData: any = null;
+      await runWorkflow(
+        () => {}, // no-op
+        (res) => { finalResultData = res; }
+      );
+
+      return NextResponse.json({
+        success: true,
+        data: finalResultData
+      });
+    }
 
   } catch (err: any) {
     console.error('Error in agent generate API:', err);

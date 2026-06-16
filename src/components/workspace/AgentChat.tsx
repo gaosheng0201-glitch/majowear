@@ -82,8 +82,30 @@ const deleteTriggerAndQuery = (range: Range, editor: HTMLDivElement): boolean =>
     range.deleteContents()
     return true
   }
-  return false
+  return false;
 }
+
+const getStatusLabel = (status: string, lang: 'zh' | 'en') => {
+  if (lang === 'zh') {
+    switch (status) {
+      case 'understanding': return '正在分析您的设计需求...';
+      case 'thinking': return '正在调用 3.1 Pro 展开深度工艺推导...';
+      case 'searching': return '正在检索流行趋势与相关信源...';
+      case 'rendering': return '正在调用生图引擎渲染效果图...';
+      case 'saving': return '正在归档设计图并编写工艺规格单...';
+      default: return '设计助手正在运行中...';
+    }
+  } else {
+    switch (status) {
+      case 'understanding': return 'Analyzing design instructions...';
+      case 'thinking': return 'Invoking 3.1 Pro for deep reasoning...';
+      case 'searching': return 'Searching trends and citations...';
+      case 'rendering': return 'Rendering high-fidelity swatches...';
+      case 'saving': return 'Saving specifications and files...';
+      default: return 'AI Assistant is running...';
+    }
+  }
+};
 
 export default function AgentChat() {
   const { id: projectId } = useParams() as { id: string }
@@ -392,16 +414,65 @@ export default function AgentChat() {
           projectId,
           displayMode,
           imageGenModel,
-          imageUrls: currentAttachments
+          imageUrls: currentAttachments,
+          stream: true
         })
       })
 
-      const result = await response.json()
-      if (!response.ok || result.error) {
-        throw new Error(result.error || "Generation request failed.")
+      if (!response.ok) {
+        throw new Error("Generation request failed.")
       }
 
-      const resData = result.data
+      const reader = response.body?.getReader()
+      if (!reader) {
+        throw new Error("No response body stream.")
+      }
+
+      const decoder = new TextDecoder("utf-8")
+      let buffer = ""
+      let finalResult: any = null
+
+      while (true) {
+        const { value, done } = await reader.read()
+        if (done) break
+
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split("\n")
+        buffer = lines.pop() || ""
+
+        for (const line of lines) {
+          if (!line.trim()) continue
+          try {
+            const chunk = JSON.parse(line)
+            if (chunk.type === 'status') {
+              const currentMessages = useStudioStore.getState().messages
+              const updated = currentMessages.map(m => {
+                if (m.id === agentMsgId) {
+                  return {
+                    ...m,
+                    loadingStatus: chunk.status,
+                    loadingTarget: chunk.target || m.loadingTarget
+                  }
+                }
+                return m
+              })
+              setMessages(updated)
+            } else if (chunk.type === 'error') {
+              throw new Error(chunk.message || "Backend streamed error")
+            } else if (chunk.type === 'result') {
+              finalResult = chunk.data
+            }
+          } catch (e: any) {
+            console.error("Failed to parse stream chunk:", e, "Line:", line)
+          }
+        }
+      }
+
+      if (!finalResult) {
+        throw new Error("No result received from stream.")
+      }
+
+      const resData = finalResult
       const currentMessages = useStudioStore.getState().messages
       const updated = [...currentMessages]
       const index = updated.findIndex(m => m.id === agentMsgId)
@@ -409,7 +480,6 @@ export default function AgentChat() {
       if (index !== -1) {
         if (resData.isToolCalled) {
           if (resData.garmentCard) {
-            // Tool generate_garment_design was called
             const gCard = resData.garmentCard as GarmentCard
             addGarmentCard(gCard)
             setActiveGarment(gCard)
@@ -423,7 +493,6 @@ export default function AgentChat() {
               loading: false
             }
           } else if (resData.createdStyleDna) {
-            // Tool create_style_dna was called
             const sDna = resData.createdStyleDna
             addStyleDna(sDna)
             setActiveStyleDnaId(sDna.id)
@@ -436,7 +505,6 @@ export default function AgentChat() {
               loading: false
             }
           } else if (resData.createdFabricCard) {
-            // Tool create_fabric_card was called
             const fCard = resData.createdFabricCard
             addFabricCard(fCard)
             setActiveFabricCardId(fCard.id)
@@ -450,7 +518,6 @@ export default function AgentChat() {
             }
           }
         } else {
-          // General text reply / search grounding
           updated[index] = {
             id: agentMsgId,
             role: 'agent',
@@ -688,9 +755,52 @@ export default function AgentChat() {
               )}
               
               {msg.loading && (
-                <div className="flex items-center space-x-2 mt-3 text-xs text-muted-foreground animate-pulse">
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  <span>{t.aiGeneratingHelp}</span>
+                <div className="space-y-2.5 mt-3">
+                  <div className="flex items-center space-x-2 text-xs text-muted-foreground">
+                    <Loader2 className="w-3.5 h-3.5 animate-spin text-primary shrink-0" />
+                    <span>{getStatusLabel(msg.loadingStatus || 'understanding', language)}</span>
+                  </div>
+
+                  {msg.loadingTarget === 'garment' && (
+                    <div className="p-3 rounded-lg border border-border bg-background/25 flex items-center justify-between animate-pulse">
+                      <div className="flex items-center space-x-2.5 truncate mr-2 flex-1">
+                        <div className="w-10 h-10 rounded bg-muted shrink-0" />
+                        <div className="flex-1 space-y-2">
+                          <div className="h-3 w-16 bg-muted rounded" />
+                          <div className="h-4 w-28 bg-muted rounded" />
+                        </div>
+                      </div>
+                      <div className="h-6 w-12 bg-muted rounded shrink-0" />
+                    </div>
+                  )}
+
+                  {msg.loadingTarget === 'fabric' && (
+                    <div className="p-3 rounded-lg border border-border bg-background/25 space-y-2.5 animate-pulse">
+                      <div className="h-4 w-28 bg-muted rounded" />
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="h-3.5 w-full bg-muted rounded" />
+                        <div className="h-3.5 w-full bg-muted rounded" />
+                        <div className="h-3.5 w-full bg-muted rounded" />
+                        <div className="h-3.5 w-full bg-muted rounded" />
+                      </div>
+                    </div>
+                  )}
+
+                  {msg.loadingTarget === 'style' && (
+                    <div className="p-3 rounded-lg border border-border bg-background/25 space-y-2.5 animate-pulse">
+                      <div className="h-4 w-32 bg-muted rounded" />
+                      <div className="flex flex-wrap gap-1">
+                        <div className="h-4 w-12 bg-muted rounded-full" />
+                        <div className="h-4 w-16 bg-muted rounded-full" />
+                        <div className="h-4 w-10 bg-muted rounded-full" />
+                      </div>
+                      <div className="flex items-center space-x-1">
+                        <div className="w-3.5 h-3.5 rounded-full bg-muted" />
+                        <div className="w-3.5 h-3.5 rounded-full bg-muted" />
+                        <div className="w-3.5 h-3.5 rounded-full bg-muted" />
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>

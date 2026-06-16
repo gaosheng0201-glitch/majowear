@@ -65,6 +65,8 @@ export interface ChatMessage {
   image_urls?: string[]
   grounding_metadata?: any
   loading?: boolean
+  loadingStatus?: string
+  loadingTarget?: 'garment' | 'fabric' | 'style'
   error?: boolean
 }
 
