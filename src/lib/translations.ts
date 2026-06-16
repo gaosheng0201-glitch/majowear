@@ -83,7 +83,7 @@ export const translations = {
     noGarmentsHelp: "还没有生成款式卡。",
     viewSpecBtn: "查看款式规格表",
     aiGeneratingHelp: "AI 编排引擎与生图模型运行中...",
-    generationModelHelp: "Gemini Pro 结构化推理 • Gemini Image 图像渲染",
+    generationModelHelp: "Agent 偶尔也会犯错，真正的设计师是你",
     
     // New workspace items
     exportTechSheet: "导出款式技术单",
@@ -196,7 +196,7 @@ export const translations = {
     noGarmentsHelp: "No garments generated yet.",
     viewSpecBtn: "View Spec Sheet",
     aiGeneratingHelp: "AI reasoning and rendering model running...",
-    generationModelHelp: "Synthesis with Gemini Pro • Render with Gemini Image",
+    generationModelHelp: "Agent may make mistakes. You are the true designer.",
     
     // New workspace items
     exportTechSheet: "Export Tech Sheet",
