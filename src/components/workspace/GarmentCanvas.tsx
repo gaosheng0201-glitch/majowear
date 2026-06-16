@@ -579,33 +579,7 @@ ${activeGarment.prompt}
             )}
           </div>
 
-          {/* Collection Management Association */}
-          <div className="mb-5 border border-border p-3.5 rounded-xl space-y-2.5">
-            <h4 className="text-xs font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
-              <FolderPlus className="w-3.5 h-3.5 text-primary" /> {t.addToCollection}
-            </h4>
-            {collections.length === 0 ? (
-              <p className="text-[10px] text-muted-foreground italic">{t.noCollectionHelp}</p>
-            ) : (
-              <div className="flex flex-wrap gap-1.5">
-                {collections.map((col) => {
-                  const isAssociated = col.garment_ids?.includes(activeGarment.id)
-                  return (
-                    <Button
-                      key={col.id}
-                      size="sm"
-                      variant={isAssociated ? "default" : "outline"}
-                      onClick={() => handleToggleCollection(col.id)}
-                      className="text-[10px] h-6 py-0.5 px-2 rounded-md shrink-0 flex items-center gap-1"
-                    >
-                      {isAssociated && <Check className="w-3 h-3" />}
-                      {col.name}
-                    </Button>
-                  )
-                })}
-              </div>
-            )}
-          </div>
+
         </div>
 
         {/* Quick Local Adjustments Input Form & Copy spec */}

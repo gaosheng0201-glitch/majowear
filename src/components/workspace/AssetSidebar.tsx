@@ -12,6 +12,7 @@ import {
   AlertCircle, 
   X,
   FolderOpen,
+  FolderPlus,
   Shirt,
   Tags,
   Edit3,
@@ -43,6 +44,7 @@ export default function AssetSidebar() {
     setActiveGarment,
     collections,
     addCollection,
+    updateCollection,
     language
   } = useStudioStore()
 
@@ -102,6 +104,99 @@ export default function AssetSidebar() {
   // Active filter
   const [selectedCollectionId, setSelectedCollectionId] = useState<string | null>(null)
   const [expandedRoots, setExpandedRoots] = useState<Record<string, boolean>>({})
+  const [activeCollectionSelectorGarmentId, setActiveCollectionSelectorGarmentId] = useState<string | null>(null)
+
+  // Handle adding active garment to a collection from sidebar popover
+  const handleToggleCollection = async (collectionId: string, garmentId: string) => {
+    try {
+      const col = collections.find(c => c.id === collectionId)
+      if (!col) return
+
+      const isIncluded = col.garment_ids?.includes(garmentId)
+      const newGarmentIds = isIncluded
+        ? col.garment_ids.filter(id => id !== garmentId)
+        : [...(col.garment_ids || []), garmentId]
+
+      const { error } = await supabase
+        .from('collections')
+        .update({ garment_ids: newGarmentIds })
+        .eq('id', collectionId)
+
+      if (error) throw error
+
+      updateCollection({
+        ...col,
+        garment_ids: newGarmentIds
+      })
+    } catch (err) {
+      console.error("Failed to update collection association:", err)
+    }
+  }
+
+  const renderCollectionPopover = (garment: any) => {
+    const isOpen = activeCollectionSelectorGarmentId === garment.id;
+    return (
+      <div className="relative shrink-0 flex items-center justify-center">
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            setActiveCollectionSelectorGarmentId(isOpen ? null : garment.id);
+          }}
+          className={`p-1 hover:bg-muted rounded text-muted-foreground hover:text-primary transition-all cursor-pointer shrink-0 ${
+            isOpen 
+              ? "opacity-100 text-primary bg-muted" 
+              : "opacity-0 group-hover/parent:opacity-100 group-hover/child:opacity-100 focus:opacity-100"
+          }`}
+          title={language === 'zh' ? '管理系列归属' : 'Manage Collections'}
+        >
+          <FolderPlus className="w-3.5 h-3.5" />
+        </button>
+
+        {isOpen && (
+          <>
+            <div 
+              className="fixed inset-0 z-40 bg-transparent" 
+              onClick={(e) => {
+                e.stopPropagation();
+                setActiveCollectionSelectorGarmentId(null);
+              }}
+            />
+            <div className="absolute right-0 top-full mt-1 w-48 bg-card border border-border rounded-lg shadow-lg p-2 z-50 text-xs text-foreground space-y-1 animate-in fade-in-50 zoom-in-95 duration-100">
+              <div className="font-semibold px-2 py-1 text-[10px] text-muted-foreground uppercase border-b border-border/40 pb-1 mb-1 select-none">
+                {language === 'zh' ? '归属系列' : 'Assign to Collection'}
+              </div>
+              {collections.length === 0 ? (
+                <p className="text-[10px] text-muted-foreground italic px-2 py-1 select-none">
+                  {language === 'zh' ? '暂无系列，请先在左侧上方新建系列' : 'No collections. Create one above first.'}
+                </p>
+              ) : (
+                <div className="max-h-40 overflow-y-auto space-y-0.5">
+                  {collections.map((col) => {
+                    const isAssociated = col.garment_ids?.includes(garment.id);
+                    return (
+                      <button
+                        key={col.id}
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleToggleCollection(col.id, garment.id);
+                        }}
+                        className="w-full flex items-center justify-between px-2 py-1 hover:bg-muted rounded text-left transition-colors cursor-pointer text-[11px]"
+                      >
+                        <span className="truncate pr-2">{col.name}</span>
+                        {isAssociated && <Check className="w-3 h-3 text-primary shrink-0" />}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </>
+        )}
+      </div>
+    );
+  };
 
   // Auto-expand the root node when activeGarment changes
   useEffect(() => {
@@ -616,7 +711,7 @@ export default function AssetSidebar() {
                     <li key={root.id} className="space-y-0.5">
                       {/* Parent Row */}
                       <div 
-                        className={`flex items-center w-full rounded-lg transition-all group/parent ${
+                        className={`flex items-center w-full rounded-lg transition-all group/parent pr-2 ${
                           activeGarment?.id === root.id 
                             ? "bg-primary/10 text-primary" 
                             : "hover:bg-muted/60 text-foreground"
@@ -649,8 +744,11 @@ export default function AssetSidebar() {
                           <span className="truncate">{root.title}</span>
                         </Button>
                         
+                        {/* Render collection manage popover */}
+                        {renderCollectionPopover(root)}
+
                         {hasVariants && (
-                          <span className="text-[10px] text-muted-foreground bg-muted border border-border px-1.5 py-0.5 rounded-full mr-2 scale-90 shrink-0 font-medium font-mono">
+                          <span className="text-[10px] text-muted-foreground bg-muted border border-border px-1.5 py-0.5 rounded-full ml-1 scale-90 shrink-0 font-medium font-mono">
                             {allVersions.length}
                           </span>
                         )}
@@ -663,13 +761,13 @@ export default function AssetSidebar() {
                             const isVarActive = activeGarment?.id === variant.id;
                             
                             return (
-                              <li key={variant.id} className="relative pl-5 group/child flex items-center">
+                              <li key={variant.id} className="relative pl-5 group/child flex items-center pr-2">
                                 {/* Tree connector horizontal line */}
                                 <div className="absolute left-[11px] top-1/2 -translate-y-1/2 w-3.5 h-px bg-border/60" />
                                 
                                 <Button
                                   variant={isVarActive ? "secondary" : "ghost"}
-                                  className={`w-full justify-start text-left text-xs h-auto py-1 px-2 text-ellipsis relative rounded-lg ${
+                                  className={`flex-1 justify-start text-left text-xs h-auto py-1 px-2 text-ellipsis relative rounded-lg ${
                                     isVarActive 
                                       ? "bg-primary/5 text-primary border-l-2 border-primary pl-2 rounded-l-none" 
                                       : "text-muted-foreground hover:text-foreground pl-2"
@@ -681,6 +779,9 @@ export default function AssetSidebar() {
                                   </span>
                                   <span className="truncate flex-1">{variant.title}</span>
                                 </Button>
+
+                                {/* Render collection manage popover */}
+                                {renderCollectionPopover(variant)}
                               </li>
                             );
                           })}
