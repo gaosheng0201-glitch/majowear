@@ -10,7 +10,8 @@ import {
   Send,
   Shirt,
   Paperclip,
-  X
+  X,
+  Settings
 } from "lucide-react"
 import { useStudioStore, ChatMessage, GarmentCard } from "@/lib/store"
 import { translations } from "@/lib/translations"
@@ -88,20 +89,40 @@ const deleteTriggerAndQuery = (range: Range, editor: HTMLDivElement): boolean =>
 const getStatusLabel = (status: string, lang: 'zh' | 'en') => {
   if (lang === 'zh') {
     switch (status) {
-      case 'understanding': return '正在分析您的设计需求...';
-      case 'thinking': return '正在调用 3.1 Pro 展开深度工艺推导...';
-      case 'searching': return '正在检索流行趋势与相关信源...';
+      case 'classifying_intent': return '正在识别您的意图...';
+      case 'understanding': return '正在解析输入参数与设计上下文...';
+      case 'thinking': return '正在调用 3.1 Pro 展开深度思考与工艺推导...';
+      case 'generating_tool_call': return '正在分析设计需求，生成设计工具指令...';
+      case 'preparing_response': return '正在调用搜索接口并准备答复...';
+      case 'executing_tool:generate_garment_design': return '正在运行款式设计工具 (generate_garment_design)，调用生图引擎渲染效果图...';
+      case 'executing_tool:create_style_dna': return '正在运行风格基因录入工具 (create_style_dna)，保存风格参数...';
+      case 'executing_tool:create_fabric_card': return '正在运行面料卡录入工具 (create_fabric_card)，保存面料参数...';
+      case 'saving_garment': return '正在归档新生成的款式设计卡到项目数据库...';
+      case 'saving_style_dna': return '正在归档风格基因预设到项目数据库...';
+      case 'saving_fabric_card': return '正在归档面料卡预设到项目数据库...';
+      case 'saving_chat_message': return '正在将答复和关联数据保存到聊天历史...';
       case 'rendering': return '正在调用生图引擎渲染效果图...';
       case 'saving': return '正在归档设计图并编写工艺规格单...';
+      case 'searching': return '正在检索流行趋势与相关信源...';
       default: return '设计助手正在运行中...';
     }
   } else {
     switch (status) {
-      case 'understanding': return 'Analyzing design instructions...';
-      case 'thinking': return 'Invoking 3.1 Pro for deep reasoning...';
-      case 'searching': return 'Searching trends and citations...';
+      case 'classifying_intent': return 'Classifying user intent...';
+      case 'understanding': return 'Analyzing input parameters and design context...';
+      case 'thinking': return 'Invoking 3.1 Pro for deep thinking and reasoning...';
+      case 'generating_tool_call': return 'Generating design tool instructions...';
+      case 'preparing_response': return 'Calling search APIs and preparing response...';
+      case 'executing_tool:generate_garment_design': return 'Executing garment design tool (generate_garment_design), rendering image...';
+      case 'executing_tool:create_style_dna': return 'Executing Style DNA tool (create_style_dna), saving preferences...';
+      case 'executing_tool:create_fabric_card': return 'Executing Fabric Card tool (create_fabric_card), saving attributes...';
+      case 'saving_garment': return 'Archiving newly generated garment card to database...';
+      case 'saving_style_dna': return 'Archiving Style DNA preset to database...';
+      case 'saving_fabric_card': return 'Archiving Fabric Card preset to database...';
+      case 'saving_chat_message': return 'Saving response and metadata to chat history...';
       case 'rendering': return 'Rendering high-fidelity swatches...';
       case 'saving': return 'Saving specifications and files...';
+      case 'searching': return 'Searching trends and citations...';
       default: return 'AI Assistant is running...';
     }
   }
@@ -132,7 +153,8 @@ export default function AgentChat() {
     setChatLoading,
     language,
     displayMode,
-    imageGenModel
+    imageGenModel,
+    activeProject
   } = useStudioStore()
 
   const t = translations[language]
@@ -274,6 +296,47 @@ export default function AgentChat() {
   const chatEndRef = useRef<HTMLDivElement>(null)
   const [attachedUrls, setAttachedUrls] = useState<string[]>([])
   const [uploadingAttachment, setUploadingAttachment] = useState(false)
+
+  // Agent Settings local states
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false)
+  const [settingsModel, setSettingsModel] = useState<'auto' | 'gemini-3.5-flash' | 'gemini-3.1-pro-preview'>('auto')
+  const [settingsStyle, setSettingsStyle] = useState<'default' | 'friendly' | 'professional'>('default')
+  const [settingsResolution, setSettingsResolution] = useState<'1024x1024' | '2048x2048' | '4096x4096'>('1024x1024')
+  const [savingSettings, setSavingSettings] = useState(false)
+
+  // Sync settings when activeProject changes
+  useEffect(() => {
+    if (activeProject) {
+      setSettingsModel((activeProject.agent_model as any) || 'auto')
+      setSettingsStyle((activeProject.agent_style as any) || 'default')
+      setSettingsResolution((activeProject.image_resolution as any) || '1024x1024')
+    }
+  }, [activeProject])
+
+  const handleSaveSettings = async () => {
+    if (!projectId) return
+    setSavingSettings(true)
+    try {
+      const { error } = await supabase
+        .from('projects')
+        .update({
+          agent_model: settingsModel,
+          agent_style: settingsStyle,
+          image_resolution: settingsResolution
+        })
+        .eq('id', projectId)
+
+      if (error) throw error
+
+      useStudioStore.getState().updateProjectSettings(settingsModel, settingsStyle, settingsResolution)
+      setIsSettingsOpen(false)
+    } catch (err) {
+      console.error("Failed to save agent settings:", err)
+      alert("保存设置失败，请重试。")
+    } finally {
+      setSavingSettings(false)
+    }
+  }
 
   // Local state for mention dropdown
   const [showMentionDropdown, setShowMentionDropdown] = useState(false)
@@ -510,7 +573,10 @@ export default function AgentChat() {
           displayMode,
           imageGenModel,
           imageUrls: currentAttachments,
-          stream: true
+          stream: true,
+          agentModel: activeProject?.agent_model || 'auto',
+          agentStyle: activeProject?.agent_style || 'default',
+          imageResolution: activeProject?.image_resolution || '1024x1024'
         })
       })
 
@@ -646,12 +712,23 @@ export default function AgentChat() {
 
   return (
     <aside className="w-80 lg:w-96 border-l border-border bg-card flex flex-col shrink-0">
-      <div className="h-14 border-b border-border flex items-center justify-between px-4 bg-background/50">
+      <div className="h-14 border-b border-border flex items-center justify-between px-4 bg-background/50 shrink-0 select-none">
         <div className="flex items-center">
           <Sparkles className="w-4 h-4 text-primary mr-2" />
           <h2 className="font-outfit font-medium">{t.agent}</h2>
         </div>
-        {chatLoading && <Loader2 className="w-4 h-4 animate-spin text-primary" />}
+        <div className="flex items-center space-x-2">
+          {chatLoading && <Loader2 className="w-3.5 h-3.5 animate-spin text-primary shrink-0" />}
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setIsSettingsOpen(true)}
+            className="w-8 h-8 rounded-lg text-muted-foreground hover:text-foreground cursor-pointer"
+            title={language === 'zh' ? '设计 Agent 设置' : 'Agent Settings'}
+          >
+            <Settings className="w-4 h-4" />
+          </Button>
+        </div>
       </div>
       
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
@@ -872,7 +949,7 @@ export default function AgentChat() {
                   {msg.loadingTarget?.startsWith('garment_edit') && (() => {
                     const parts = msg.loadingTarget.split(':')
                     const parentTitle = parts[1] || ''
-                    const parentImageUrl = parts[2] || ''
+                    const parentImageUrl = parts.slice(2).join(':') || ''
                     return (
                       <div className="p-3 rounded-lg border border-border bg-background/25 flex items-center justify-between animate-pulse">
                         <div className="flex items-center space-x-2.5 truncate mr-2 flex-1">
@@ -1061,6 +1138,130 @@ export default function AgentChat() {
           {t.generationModelHelp}
         </div>
       </div>
+
+      {/* Agent Settings Modal Overlay */}
+      {isSettingsOpen && (
+        <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex items-center justify-center animate-in fade-in duration-200">
+          <div className="bg-background border border-border rounded-2xl w-full max-w-sm p-6 shadow-2xl space-y-5 relative text-foreground select-none">
+            <button 
+              type="button"
+              onClick={() => setIsSettingsOpen(false)}
+              className="absolute top-4 right-4 text-muted-foreground hover:text-foreground cursor-pointer transition-colors"
+            >
+              <X className="w-4 h-4" />
+            </button>
+
+            <div>
+              <h3 className="font-outfit font-bold text-base text-foreground flex items-center gap-1.5">
+                <Settings className="w-4 h-4 text-primary" />
+                {language === 'zh' ? '设计 Agent 配置' : 'Agent Settings'}
+              </h3>
+              <p className="text-[10px] text-muted-foreground mt-1">
+                {language === 'zh' ? '个性化调整您的专属服装设计助理' : 'Customize your AI fashion design assistant'}
+              </p>
+            </div>
+
+            <div className="space-y-4 text-xs">
+              {/* Model Choice */}
+              <div className="space-y-1.5">
+                <label className="font-semibold text-foreground block">
+                  {language === 'zh' ? '聊天推理模型' : 'Inference Model'}
+                </label>
+                <select 
+                  value={settingsModel}
+                  onChange={(e: any) => setSettingsModel(e.target.value)}
+                  className="w-full bg-muted/60 border border-border rounded-lg px-3 py-2 outline-none focus:border-primary/50 text-foreground text-xs"
+                >
+                  <option value="auto">{language === 'zh' ? '智能自动路由 (推荐)' : 'Auto Routing (Recommended)'}</option>
+                  <option value="gemini-3.5-flash">Gemini 3.5 Flash ({language === 'zh' ? '极速生成' : 'Fast & Snappy'})</option>
+                  <option value="gemini-3.1-pro-preview">Gemini 3.1 Pro ({language === 'zh' ? '工艺推理' : 'Deep Reasoning'})</option>
+                </select>
+              </div>
+
+              {/* Chat Style */}
+              <div className="space-y-1.5">
+                <label className="font-semibold text-foreground block">
+                  {language === 'zh' ? '对话语气风格' : 'Conversation Style'}
+                </label>
+                <div className="grid grid-cols-3 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setSettingsStyle('default')}
+                    className={`border rounded-lg py-2 text-center transition-all cursor-pointer font-semibold text-xs ${
+                      settingsStyle === 'default' 
+                        ? 'border-primary bg-primary/10 text-primary' 
+                        : 'border-border bg-muted/30 hover:bg-muted/60 text-muted-foreground'
+                    }`}
+                  >
+                    {language === 'zh' ? '默认风格' : 'Default'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSettingsStyle('friendly')}
+                    className={`border rounded-lg py-2 text-center transition-all cursor-pointer font-semibold text-xs ${
+                      settingsStyle === 'friendly' 
+                        ? 'border-primary bg-primary/10 text-primary' 
+                        : 'border-border bg-muted/30 hover:bg-muted/60 text-muted-foreground'
+                    }`}
+                  >
+                    {language === 'zh' ? '亲切热情' : 'Warm'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSettingsStyle('professional')}
+                    className={`border rounded-lg py-2 text-center transition-all cursor-pointer font-semibold text-xs ${
+                      settingsStyle === 'professional' 
+                        ? 'border-primary bg-primary/10 text-primary' 
+                        : 'border-border bg-muted/30 hover:bg-muted/60 text-muted-foreground'
+                    }`}
+                  >
+                    {language === 'zh' ? '专业干练' : 'Crisp'}
+                  </button>
+                </div>
+              </div>
+
+              {/* Image Resolution */}
+              <div className="space-y-1.5">
+                <label className="font-semibold text-foreground block">
+                  {language === 'zh' ? '生图分辨率' : 'Image Resolution'}
+                </label>
+                <select
+                  value={settingsResolution}
+                  onChange={(e: any) => setSettingsResolution(e.target.value)}
+                  className="w-full bg-muted/60 border border-border rounded-lg px-3 py-2 outline-none focus:border-primary/50 text-foreground text-xs"
+                >
+                  <option value="1024x1024">{language === 'zh' ? '1K (1024 x 1024)' : '1K (1024 x 1024)'}</option>
+                  <option value="2048x2048">{language === 'zh' ? '2K (2048 x 2048)' : '2K (2048 x 2048)'}</option>
+                  <option value="4096x4096">{language === 'zh' ? '4K (4096 x 4096)' : '4K (4096 x 4096)'}</option>
+                </select>
+                <p className="text-[9px] text-muted-foreground leading-normal mt-1">
+                  {language === 'zh' 
+                    ? '注：Gemini 生图模型默认输出 1K 尺寸。选择 2K/4K 会在调用 API 时传入原生高分辨率参数，以提供更清晰的高清面料与款式细节表现。'
+                    : 'Note: Gemini image model outputs 1K by default. Choosing 2K/4K passes native high-resolution parameters to the API to provide clearer detail representation.'}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex space-x-2 pt-2 text-xs">
+              <Button 
+                variant="outline" 
+                onClick={() => setIsSettingsOpen(false)}
+                className="flex-1 cursor-pointer"
+                disabled={savingSettings}
+              >
+                {language === 'zh' ? '取消' : 'Cancel'}
+              </Button>
+              <Button 
+                onClick={handleSaveSettings}
+                className="flex-1 cursor-pointer"
+                disabled={savingSettings}
+              >
+                {savingSettings ? (language === 'zh' ? '保存中...' : 'Saving...') : (language === 'zh' ? '确认保存' : 'Save Settings')}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </aside>
   )
 }

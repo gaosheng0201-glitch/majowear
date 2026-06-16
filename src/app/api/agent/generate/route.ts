@@ -116,7 +116,10 @@ export async function POST(request: Request) {
       imageUrls = [], // Multimodal attachments
       displayMode = 'white_background', 
       imageGenModel = 'gemini-3.1-flash-image',
-      stream = false
+      stream = false,
+      agentModel = 'auto',
+      agentStyle = 'default',
+      imageResolution = '1024x1024'
     } = body;
 
     if (!userPrompt) {
@@ -243,9 +246,19 @@ export async function POST(request: Request) {
       contents.push({ role: 'user', parts: newParts });
 
       // 5. Construct Gemini system Instruction
+      let styleInstruction = "";
+      if (agentStyle === 'professional') {
+        styleInstruction = `
+Tone of Voice: You are highly professional, technical, direct, and task-oriented. Keep your explanations concise, focusing on material specifications, technical fit, and design details. Avoid unnecessary conversational fluff, exclamation marks, or overly enthusiastic remarks. Speak like an experienced, focused technical designer.`;
+      } else if (agentStyle === 'friendly') {
+        styleInstruction = `
+Tone of Voice: You are warm, encouraging, creative, and collaborative. Use natural conversational expressions, friendly remarks, and fashion-inspiring descriptions. Speak like a friendly creative co-director and design partner.`;
+      }
+
       const systemPrompt = `You are an expert fashion design AI assistant in a professional fashion studio.
 Your role is to collaborate with designers. You have access to tools for creating designs, saving style DNA presets, and saving fabric presets.
 When appropriate, use the tools. Otherwise, answer questions directly using your knowledge and Google Search grounding.
+${styleInstruction}
 
 Context & Rules:
 ${styleDnaData ? `
@@ -316,6 +329,7 @@ Semantic Mentions & Comparison Guidelines:
       // Intent Classification using a fast model (gemini-3.5-flash) to avoid API tool clashes
       let intent = 'SEARCH';
       try {
+        onStatus('classifying_intent');
         const classificationResponse = await ai.models.generateContent({
           model: 'gemini-3.5-flash',
           contents: [
@@ -348,18 +362,34 @@ Output only the category name ('DEEP_THINK', 'TOOL' or 'SEARCH') without any oth
 
       console.log('[Agent Chat] Classified intent:', intent);
 
-      const hasThinkingKeywords = /思考|分析|为什么|推导|对比|think|reason|analyze|compare/i.test(userPrompt);
-      const useProReasoning = (intent === 'DEEP_THINK') || hasThinkingKeywords;
-
       let modelName = 'gemini-3.5-flash';
       let thinkingConfigVal: any = { thinkingLevel: 'MEDIUM' };
+      let useProReasoning = false;
+
+      if (agentModel === 'gemini-3.1-pro-preview') {
+        useProReasoning = true;
+      } else if (agentModel === 'gemini-3.5-flash') {
+        useProReasoning = false;
+      } else {
+        // auto
+        const hasThinkingKeywords = /思考|分析|为什么|推导|对比|think|reason|analyze|compare/i.test(userPrompt);
+        useProReasoning = (intent === 'DEEP_THINK') || hasThinkingKeywords;
+      }
 
       if (useProReasoning) {
         modelName = 'gemini-3.1-pro-preview';
         thinkingConfigVal = { thinkingLevel: 'HIGH' };
         onStatus('thinking');
+      } else if (intent === 'TOOL') {
+        onStatus('generating_tool_call');
       } else {
-        onStatus('searching');
+        const hasSearchKeywords = /搜索|检索|趋势|新闻|查找|查询|最新|推荐|search|find|news|trend|latest/i.test(userPrompt);
+        const hasImages = imageUrls && imageUrls.length > 0;
+        if (hasImages || !hasSearchKeywords) {
+          onStatus('understanding');
+        } else {
+          onStatus('preparing_response');
+        }
       }
 
       const isToolBranch = intent === 'TOOL';
@@ -396,38 +426,46 @@ Output only the category name ('DEEP_THINK', 'TOOL' or 'SEARCH') without any oth
           
           let finalPrompt = args.prompt;
 
+          const isNewDesign = args.is_new_design === true;
+
           // 1. Identify and load the predecessor garment image (Immediate Predecessor Principle)
           let editBaseImagePart: any = null;
           let targetParentGarment = null;
-          try {
-            targetParentGarment = parentGarmentData;
-            // If the agent explicitly passed a parent_id, fetch its data to get the correct version
-            if (args.parent_id && args.parent_id !== parentVersionId) {
-              const { data } = await supabase
-                .from('garment_cards')
-                .select('*')
-                .eq('id', args.parent_id)
-                .single();
-              if (data) {
-                targetParentGarment = data;
-              }
-            }
 
-            if (targetParentGarment && targetParentGarment.images && targetParentGarment.images.length > 0) {
-              console.log('[Agent Image Edit] Loading predecessor image (ID:', targetParentGarment.id, ') for conversational semantic editing:', targetParentGarment.images[0]);
-              editBaseImagePart = await imageUrlToPart(targetParentGarment.images[0]);
+          if (!isNewDesign) {
+            try {
+              targetParentGarment = parentGarmentData;
+              // If the agent explicitly passed a parent_id, fetch its data to get the correct version
+              if (args.parent_id && args.parent_id !== parentVersionId) {
+                const { data } = await supabase
+                  .from('garment_cards')
+                  .select('*')
+                  .eq('id', args.parent_id)
+                  .single();
+                if (data) {
+                  targetParentGarment = data;
+                }
+              }
+
+              if (targetParentGarment && targetParentGarment.images && targetParentGarment.images.length > 0) {
+                console.log('[Agent Image Edit] Loading predecessor image (ID:', targetParentGarment.id, ') for conversational semantic editing:', targetParentGarment.images[0]);
+                editBaseImagePart = await imageUrlToPart(targetParentGarment.images[0]);
+              }
+            } catch (err: any) {
+              // Throw a highly informative error to notify about network/proxy blocking issues
+              throw new Error(`Failed to load predecessor garment image for editing: ${err.message}. If running locally, please ensure your proxy (e.g. Clash) is not blocking loopback requests to localhost/127.0.0.1.`);
             }
-          } catch (err: any) {
-            // Throw a highly informative error to notify about network/proxy blocking issues
-            throw new Error(`Failed to load predecessor garment image for editing: ${err.message}. If running locally, please ensure your proxy (e.g. Clash) is not blocking loopback requests to localhost/127.0.0.1.`);
           }
 
           // Trigger rendering status with parent details if editing, enabling high-fidelity ghost skeleton card
-          if (editBaseImagePart && targetParentGarment) {
+          if (!isNewDesign && editBaseImagePart && targetParentGarment) {
             const parentImageUrl = targetParentGarment.images?.[0] || '';
-            onStatus('rendering', `garment_edit:${targetParentGarment.title}:${parentImageUrl}`);
+            onStatus('executing_tool:generate_garment_design', `garment_edit:${targetParentGarment.title}:${parentImageUrl}`);
+          } else if (isNewDesign && imageUrls && imageUrls.length > 0) {
+            // New design but has uploaded reference images
+            onStatus('executing_tool:generate_garment_design', `garment_edit:参考图片:${imageUrls[0]}`);
           } else {
-            onStatus('rendering', 'garment');
+            onStatus('executing_tool:generate_garment_design', 'garment');
           }
 
           // 2. Adjust prompt semantic prefix based on inputs
@@ -446,6 +484,13 @@ Output only the category name ('DEEP_THINK', 'TOOL' or 'SEARCH') without any oth
           let generatedImageBuffer: Buffer;
           let mimeType = 'image/png';
 
+          let sizeVal: '1K' | '2K' | '4K' = '1K';
+          if (imageResolution === '2048x2048' || imageResolution === '2K') {
+            sizeVal = '2K';
+          } else if (imageResolution === '4096x4096' || imageResolution === '4K') {
+            sizeVal = '4K';
+          }
+
           try {
             if (imageGenModel.startsWith('gemini-')) {
               // 3. Construct multimodal parts list
@@ -462,7 +507,10 @@ Output only the category name ('DEEP_THINK', 'TOOL' or 'SEARCH') without any oth
                 contents: [{ role: 'user', parts }],
                 config: {
                   responseModalities: ['IMAGE'],
-                  imageConfig: { aspectRatio: '1:1' }
+                  imageConfig: { 
+                    aspectRatio: '1:1',
+                    imageSize: sizeVal
+                  }
                 }
               });
 
@@ -483,7 +531,6 @@ Output only the category name ('DEEP_THINK', 'TOOL' or 'SEARCH') without any oth
                   aspectRatio: '1:1',
                 },
               });
-
               const generatedImage = imageGenResponse.generatedImages?.[0];
               const base64ImageBytes = generatedImage?.image?.imageBytes;
               if (!base64ImageBytes) {
@@ -499,7 +546,7 @@ Output only the category name ('DEEP_THINK', 'TOOL' or 'SEARCH') without any oth
             throw imgErr;
           }
 
-          onStatus('saving');
+          onStatus('saving_garment');
 
           const filename = `${user.id}/${task.id}_design.png`;
           const { error: uploadError } = await supabase.storage
@@ -582,7 +629,7 @@ Output only the category name ('DEEP_THINK', 'TOOL' or 'SEARCH') without any oth
             .eq('id', task.id);
 
         } else if (call.name === 'create_style_dna') {
-          onStatus('rendering', 'style');
+          onStatus('executing_tool:create_style_dna', 'style');
           const args = call.args as any;
           
           const { data: styleDna, error: styleError } = await supabase
@@ -606,7 +653,7 @@ Output only the category name ('DEEP_THINK', 'TOOL' or 'SEARCH') without any oth
             throw styleError;
           }
 
-          onStatus('saving');
+          onStatus('saving_style_dna', 'style');
 
           createdStyleDna = styleDna;
           replyText = `我已为您成功录入风格基因预设："${createdStyleDna.name}"。\n\n**关键词**: ${createdStyleDna.keywords.join(', ')}\n**色彩**: ${createdStyleDna.colors.join(', ')}\n**廓形**: ${createdStyleDna.silhouettes.join(', ')}`;
@@ -624,7 +671,7 @@ Output only the category name ('DEEP_THINK', 'TOOL' or 'SEARCH') without any oth
             .eq('id', task.id);
 
         } else if (call.name === 'create_fabric_card') {
-          onStatus('rendering', 'fabric');
+          onStatus('executing_tool:create_fabric_card', 'fabric');
           const args = call.args as any;
 
           const { data: fabricCard, error: fabricError } = await supabase
@@ -650,7 +697,7 @@ Output only the category name ('DEEP_THINK', 'TOOL' or 'SEARCH') without any oth
             throw fabricError;
           }
 
-          onStatus('saving');
+          onStatus('saving_fabric_card', 'fabric');
 
           createdFabricCard = fabricCard;
           replyText = `我已为您成功录入面料样卡预设："${createdFabricCard.name}"。\n\n**成分**: ${createdFabricCard.composition}\n**厚度/克重**: ${createdFabricCard.weight_gsm ? `${createdFabricCard.weight_gsm} GSM` : '未指定'}\n**纹理**: ${createdFabricCard.texture}\n**生图描述**: ${createdFabricCard.prompt_description}`;
@@ -668,7 +715,7 @@ Output only the category name ('DEEP_THINK', 'TOOL' or 'SEARCH') without any oth
             .eq('id', task.id);
         }
       } else {
-        onStatus('saving');
+        onStatus('saving_chat_message');
         replyText = geminiResponse.text || '';
 
         await supabase.from('chat_messages').insert({

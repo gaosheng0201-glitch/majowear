@@ -6,6 +6,9 @@ export interface Project {
   name: string
   description?: string
   cover_image?: string
+  agent_model?: string
+  agent_style?: string
+  image_resolution?: string
   created_at: string
   updated_at: string
 }
@@ -141,6 +144,7 @@ interface StudioState {
   setImageGenModel: (model: string) => void
   updateStyleDna: (styleDna: StyleDna) => void
   updateFabricCard: (fabricCard: FabricCard) => void
+  updateProjectSettings: (agent_model: string, agent_style: string, image_resolution: string) => void
 }
 
 export const useStudioStore = create<StudioState>((set) => ({
@@ -187,6 +191,11 @@ export const useStudioStore = create<StudioState>((set) => ({
   })),
   updateFabricCard: (fabricCard) => set((state) => ({
     fabricCards: state.fabricCards.map(f => f.id === fabricCard.id ? fabricCard : f)
+  })),
+  updateProjectSettings: (agent_model, agent_style, image_resolution) => set((state) => ({
+    activeProject: state.activeProject 
+      ? { ...state.activeProject, agent_model, agent_style, image_resolution }
+      : null
   })),
 }))
 

@@ -317,7 +317,7 @@ ${activeGarment.prompt}
         throw new Error(result.error || "Failed to generate variant.")
       }
 
-      const generated = result.data as GarmentCard
+      const generated = result.data.garmentCard as GarmentCard
       addGarmentCard(generated)
       setActiveGarment(generated)
 
