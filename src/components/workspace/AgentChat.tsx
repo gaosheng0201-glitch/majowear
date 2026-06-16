@@ -137,7 +137,7 @@ export default function AgentChat() {
 
   const t = translations[language]
 
-  const renderMessageText = (text: string, garments: GarmentCard[]) => {
+  const renderPillsAndText = (text: string, garments: GarmentCard[]) => {
     if (!text) return ""
     const validGarments = [...garments]
       .filter(g => g.title && g.title.trim().length > 0)
@@ -172,6 +172,101 @@ export default function AgentChat() {
       }
       return <span key={index}>{part}</span>
     })
+  }
+
+  const parseInlineElements = (text: string, garments: GarmentCard[]) => {
+    if (!text) return ""
+    // Split by markdown bold tags **
+    const boldParts = text.split(/\*\*([\s\S]*?)\*\*/g)
+    
+    return boldParts.map((part, index) => {
+      const isBold = index % 2 === 1
+      const parsedPart = renderPillsAndText(part, garments)
+      if (isBold) {
+        return <strong key={index} className="font-semibold text-foreground">{parsedPart}</strong>
+      }
+      return <span key={index}>{parsedPart}</span>
+    })
+  }
+
+  const renderMessageText = (text: string, garments: GarmentCard[]) => {
+    if (!text) return ""
+    const lines = text.split('\n')
+    
+    const blocks: React.ReactNode[] = []
+    let currentListItems: React.ReactNode[] = []
+
+    const flushList = (key: number) => {
+      if (currentListItems.length > 0) {
+        blocks.push(
+          <ul key={`list-${key}`} className="list-disc pl-5 my-2 space-y-1.5 text-xs text-muted-foreground/90">
+            {...currentListItems}
+          </ul>
+        )
+        currentListItems = []
+      }
+    }
+
+    lines.forEach((line, idx) => {
+      const trimmed = line.trim()
+
+      if (trimmed.startsWith('##### ')) {
+        flushList(idx)
+        blocks.push(
+          <h5 key={idx} className="text-[10px] font-semibold text-foreground mt-2 mb-1">
+            {parseInlineElements(trimmed.slice(6), garments)}
+          </h5>
+        )
+      } else if (trimmed.startsWith('#### ')) {
+        flushList(idx)
+        blocks.push(
+          <h4 key={idx} className="text-xs font-semibold text-foreground mt-3 mb-1">
+            {parseInlineElements(trimmed.slice(5), garments)}
+          </h4>
+        )
+      } else if (trimmed.startsWith('### ')) {
+        flushList(idx)
+        blocks.push(
+          <h3 key={idx} className="text-xs font-bold text-foreground mt-4 mb-1.5">
+            {parseInlineElements(trimmed.slice(4), garments)}
+          </h3>
+        )
+      } else if (trimmed.startsWith('## ')) {
+        flushList(idx)
+        blocks.push(
+          <h2 key={idx} className="text-sm font-bold text-foreground mt-5 mb-2">
+            {parseInlineElements(trimmed.slice(3), garments)}
+          </h2>
+        )
+      } else if (trimmed.startsWith('# ')) {
+        flushList(idx)
+        blocks.push(
+          <h1 key={idx} className="text-base font-extrabold text-foreground mt-6 mb-2.5">
+            {parseInlineElements(trimmed.slice(2), garments)}
+          </h1>
+        )
+      } else if (trimmed.startsWith('* ') || trimmed.startsWith('- ')) {
+        currentListItems.push(
+          <li key={idx} className="pl-0.5">
+            {parseInlineElements(trimmed.slice(2), garments)}
+          </li>
+        )
+      } else if (trimmed === '') {
+        flushList(idx)
+        blocks.push(<div key={idx} className="h-1.5" />)
+      } else {
+        flushList(idx)
+        blocks.push(
+          <p key={idx} className="text-xs leading-relaxed text-muted-foreground/90 my-2 last:mb-0">
+            {parseInlineElements(line, garments)}
+          </p>
+        )
+      }
+    })
+
+    flushList(lines.length)
+
+    return <div className="space-y-0.5">{blocks}</div>
   }
 
   // Local UI state
@@ -710,9 +805,9 @@ export default function AgentChat() {
                   })()}
                 </div>
               ) : (
-                <p className="leading-relaxed whitespace-pre-line text-xs">
+                <div className="leading-relaxed text-xs">
                   {renderMessageText(msg.text, garmentCards)}
-                </p>
+                </div>
               )}
               
               {/* Multimodal user uploaded image attachment list */}
