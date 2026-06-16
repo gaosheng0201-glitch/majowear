@@ -735,7 +735,7 @@ export default function AssetSidebar() {
 
                         <Button 
                           variant="ghost"
-                          className={`flex-1 justify-start text-left text-sm h-auto py-1.5 px-1.5 text-ellipsis select-none bg-transparent hover:bg-transparent ${
+                          className={`flex-1 min-w-0 justify-start text-left text-sm h-auto py-1.5 px-1.5 text-ellipsis select-none bg-transparent hover:bg-transparent ${
                             activeGarment?.id === root.id ? "text-primary font-bold" : "text-foreground"
                           }`}
                           onClick={() => setActiveGarment(root)}
@@ -767,7 +767,7 @@ export default function AssetSidebar() {
                                 
                                 <Button
                                   variant={isVarActive ? "secondary" : "ghost"}
-                                  className={`flex-1 justify-start text-left text-xs h-auto py-1 px-2 text-ellipsis relative rounded-lg ${
+                                  className={`flex-1 min-w-0 justify-start text-left text-xs h-auto py-1 px-2 text-ellipsis relative rounded-lg ${
                                     isVarActive 
                                       ? "bg-primary/5 text-primary border-l-2 border-primary pl-2 rounded-l-none" 
                                       : "text-muted-foreground hover:text-foreground pl-2"
