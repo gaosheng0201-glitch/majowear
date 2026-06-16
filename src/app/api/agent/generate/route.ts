@@ -392,15 +392,15 @@ Output only the category name ('DEEP_THINK', 'TOOL' or 'SEARCH') without any oth
         isToolCalled = true;
 
         if (call.name === 'generate_garment_design') {
-          onStatus('rendering', 'garment');
           const args = call.args as any;
           
           let finalPrompt = args.prompt;
 
           // 1. Identify and load the predecessor garment image (Immediate Predecessor Principle)
           let editBaseImagePart: any = null;
+          let targetParentGarment = null;
           try {
-            let targetParentGarment = parentGarmentData;
+            targetParentGarment = parentGarmentData;
             // If the agent explicitly passed a parent_id, fetch its data to get the correct version
             if (args.parent_id && args.parent_id !== parentVersionId) {
               const { data } = await supabase
@@ -420,6 +420,14 @@ Output only the category name ('DEEP_THINK', 'TOOL' or 'SEARCH') without any oth
           } catch (err: any) {
             // Throw a highly informative error to notify about network/proxy blocking issues
             throw new Error(`Failed to load predecessor garment image for editing: ${err.message}. If running locally, please ensure your proxy (e.g. Clash) is not blocking loopback requests to localhost/127.0.0.1.`);
+          }
+
+          // Trigger rendering status with parent details if editing, enabling high-fidelity ghost skeleton card
+          if (editBaseImagePart && targetParentGarment) {
+            const parentImageUrl = targetParentGarment.images?.[0] || '';
+            onStatus('rendering', `garment_edit:${targetParentGarment.title}:${parentImageUrl}`);
+          } else {
+            onStatus('rendering', 'garment');
           }
 
           // 2. Adjust prompt semantic prefix based on inputs

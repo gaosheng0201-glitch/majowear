@@ -8,6 +8,7 @@ All notable changes and implementations for the AI Personal Fashion Studio proje
 - **Gemini API Conversational Image Editing**
   - **Immediate Predecessor Versioning**: Integrates step-by-step visual editing. The generator retrieves the image of the immediate predecessor garment version (`parentVersionId` or explicitly @-mentioned `args.parent_id`) and passes it as a reference part, enabling the model to carry over accumulated design changes (collar, pocket additions) across iterations.
   - **Loud Error Reporting & Proxy Diagnostics**: Replaced silent error fallback with descriptive exception throwing. If a parent image fails to download (due to local proxy blocking localhost loopback, Supabase storage access, or network issues), the backend fails loudly and provides clear instructions on debugging local proxy/loopback configurations.
+  - **Ghost Card Skeleton & Status Transparency**: Streams predecessor garment details (title and image URL) during local inpainting edits (`garment_edit:<Title>:<ImageUrl>`). The frontend parses this to render a custom shimmering skeleton containing a faded grayscale preview of the parent garment with an active spinner, making the editing state visually transparent.
 - **Sketch-to-Image (Hand-drawn Refinements)**
   - **Multimodal Generation**: Merged user-uploaded hand-drawn sketch assets from chat messages into the image generation pipeline, allowing Gemini to refine rough outlines into polished flat lays.
 

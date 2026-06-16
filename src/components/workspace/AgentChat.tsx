@@ -869,6 +869,39 @@ export default function AgentChat() {
                     </div>
                   )}
 
+                  {msg.loadingTarget?.startsWith('garment_edit') && (() => {
+                    const parts = msg.loadingTarget.split(':')
+                    const parentTitle = parts[1] || ''
+                    const parentImageUrl = parts[2] || ''
+                    return (
+                      <div className="p-3 rounded-lg border border-border bg-background/25 flex items-center justify-between animate-pulse">
+                        <div className="flex items-center space-x-2.5 truncate mr-2 flex-1">
+                          <div className="w-10 h-10 rounded border border-border overflow-hidden bg-muted shrink-0 relative flex items-center justify-center">
+                            {parentImageUrl ? (
+                              <img src={parentImageUrl} alt="" className="w-full h-full object-cover opacity-40 grayscale" />
+                            ) : (
+                              <div className="w-full h-full bg-muted" />
+                            )}
+                            <div className="absolute inset-0 flex items-center justify-center bg-black/10">
+                              <Loader2 className="w-3.5 h-3.5 animate-spin text-primary" />
+                            </div>
+                          </div>
+                          <div className="truncate flex-1">
+                            <div className="flex items-center space-x-1.5">
+                              <span className="text-[9px] uppercase font-semibold text-primary bg-primary/10 px-1.5 py-0.5 rounded tracking-wide shrink-0">
+                                {language === 'zh' ? '正在重塑设计' : 'Inpainting Design'}
+                              </span>
+                            </div>
+                            <h4 className="text-xs font-semibold mt-1 text-foreground truncate max-w-[120px] lg:max-w-[150px]">
+                              {parentTitle}
+                            </h4>
+                          </div>
+                        </div>
+                        <div className="h-6 w-12 bg-muted rounded shrink-0" />
+                      </div>
+                    )
+                  })()}
+
                   {msg.loadingTarget === 'fabric' && (
                     <div className="p-3 rounded-lg border border-border bg-background/25 space-y-2.5 animate-pulse">
                       <div className="h-4 w-28 bg-muted rounded" />
