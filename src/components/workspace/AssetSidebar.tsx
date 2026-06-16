@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -14,7 +14,9 @@ import {
   FolderOpen,
   Shirt,
   Tags,
-  Edit3
+  Edit3,
+  ChevronRight,
+  ChevronDown
 } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
 import { useStudioStore, StyleDna, FabricCard, Collection } from "@/lib/store"
@@ -99,6 +101,25 @@ export default function AssetSidebar() {
 
   // Active filter
   const [selectedCollectionId, setSelectedCollectionId] = useState<string | null>(null)
+  const [expandedRoots, setExpandedRoots] = useState<Record<string, boolean>>({})
+
+  // Auto-expand the root node when activeGarment changes
+  useEffect(() => {
+    if (activeGarment) {
+      // Find the root ancestor of activeGarment in garmentCards
+      let curr = activeGarment;
+      while (curr.parent_version_id) {
+        const parent = garmentCards.find(p => p.id === curr.parent_version_id);
+        if (!parent) break;
+        curr = parent;
+      }
+      // Expand this root
+      setExpandedRoots(prev => ({
+        ...prev,
+        [curr.id]: true
+      }));
+    }
+  }, [activeGarment, garmentCards]);
 
   const handleOpenStyleEdit = (style: StyleDna) => {
     setEditingStyle(style)
@@ -540,22 +561,137 @@ export default function AssetSidebar() {
           </h3>
           {filteredGarments.length === 0 ? (
             <p className="text-xs text-muted-foreground italic px-2">{t.noGarmentsHelp}</p>
-          ) : (
-            <ul className="space-y-1">
-              {filteredGarments.map((garment) => (
-                <li key={garment.id}>
-                  <Button 
-                    variant={activeGarment?.id === garment.id ? "secondary" : "ghost"}
-                    className="w-full justify-start text-left text-sm h-auto py-1.5 px-2.5 text-ellipsis"
-                    onClick={() => setActiveGarment(garment)}
-                  >
-                    <Shirt className="w-3.5 h-3.5 mr-2 text-primary shrink-0" />
-                    <span className="truncate">{garment.title}</span>
-                  </Button>
-                </li>
-              ))}
-            </ul>
-          )}
+          ) : (() => {
+            // Build garment tree structure
+            const roots = filteredGarments.filter(g => {
+              if (!g.parent_version_id) return true;
+              return !filteredGarments.some(p => p.id === g.parent_version_id);
+            });
+
+            const garmentTree = roots.map(root => {
+              const descendants: any[] = [];
+              const isDescendant = (g: any): boolean => {
+                let curr = g;
+                while (curr.parent_version_id) {
+                  const parent = filteredGarments.find(p => p.id === curr.parent_version_id);
+                  if (!parent) break;
+                  if (parent.id === root.id) return true;
+                  curr = parent;
+                }
+                return false;
+              };
+
+              filteredGarments.forEach(g => {
+                if (g.id !== root.id && isDescendant(g)) {
+                  descendants.push(g);
+                }
+              });
+
+              // Sort chronologically oldest to newest
+              const allVersions = [root, ...descendants].sort((a, b) => 
+                new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+              );
+
+              return {
+                root,
+                allVersions
+              };
+            });
+
+            return (
+              <ul className="space-y-1">
+                {garmentTree.map(({ root, allVersions }) => {
+                  const hasVariants = allVersions.length > 1;
+                  const isExpanded = !!expandedRoots[root.id];
+                  
+                  const toggleExpand = (e: React.MouseEvent) => {
+                    e.stopPropagation();
+                    setExpandedRoots(prev => ({
+                      ...prev,
+                      [root.id]: !prev[root.id]
+                    }));
+                  };
+
+                  return (
+                    <li key={root.id} className="space-y-0.5">
+                      {/* Parent Row */}
+                      <div 
+                        className={`flex items-center w-full rounded-lg transition-all group/parent ${
+                          activeGarment?.id === root.id 
+                            ? "bg-primary/10 text-primary" 
+                            : "hover:bg-muted/60 text-foreground"
+                        }`}
+                      >
+                        {hasVariants ? (
+                          <button
+                            type="button"
+                            onClick={toggleExpand}
+                            className="p-1.5 hover:bg-muted rounded-md transition-colors cursor-pointer text-muted-foreground shrink-0"
+                          >
+                            <ChevronRight 
+                              className={`w-3.5 h-3.5 transition-transform duration-200 ${
+                                isExpanded ? "transform rotate-90" : ""
+                              }`} 
+                            />
+                          </button>
+                        ) : (
+                          <div className="w-7 shrink-0" />
+                        )}
+
+                        <Button 
+                          variant="ghost"
+                          className={`flex-1 justify-start text-left text-sm h-auto py-1.5 px-1.5 text-ellipsis select-none bg-transparent hover:bg-transparent ${
+                            activeGarment?.id === root.id ? "text-primary font-bold" : "text-foreground"
+                          }`}
+                          onClick={() => setActiveGarment(root)}
+                        >
+                          <Shirt className={`w-3.5 h-3.5 mr-2 shrink-0 ${activeGarment?.id === root.id ? "text-primary" : "text-muted-foreground group-hover/parent:text-foreground"}`} />
+                          <span className="truncate">{root.title}</span>
+                        </Button>
+                        
+                        {hasVariants && (
+                          <span className="text-[10px] text-muted-foreground bg-muted border border-border px-1.5 py-0.5 rounded-full mr-2 scale-90 shrink-0 font-medium font-mono">
+                            {allVersions.length}
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Sub-versions / Variants */}
+                      {hasVariants && isExpanded && (
+                        <ul className="pl-3.5 mt-0.5 space-y-0.5 relative before:absolute before:left-[11px] before:top-0 before:bottom-3 before:w-px before:bg-border/60">
+                          {allVersions.map((variant, idx) => {
+                            const isVarActive = activeGarment?.id === variant.id;
+                            
+                            return (
+                              <li key={variant.id} className="relative pl-5 group/child flex items-center">
+                                {/* Tree connector horizontal line */}
+                                <div className="absolute left-[11px] top-1/2 -translate-y-1/2 w-3.5 h-px bg-border/60" />
+                                
+                                <Button
+                                  variant={isVarActive ? "secondary" : "ghost"}
+                                  className={`w-full justify-start text-left text-xs h-auto py-1 px-2 text-ellipsis relative rounded-lg ${
+                                    isVarActive 
+                                      ? "bg-primary/5 text-primary border-l-2 border-primary pl-2 rounded-l-none" 
+                                      : "text-muted-foreground hover:text-foreground pl-2"
+                                  }`}
+                                  onClick={() => setActiveGarment(variant)}
+                                >
+                                  <span className="font-mono font-bold scale-90 mr-1.5 text-[9px] px-1 bg-muted/60 border border-border/40 rounded text-muted-foreground/80 group-hover/child:text-foreground shrink-0 select-none">
+                                    v{idx + 1}
+                                  </span>
+                                  <span className="truncate flex-1">{variant.title}</span>
+                                </Button>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            );
+          })()}
         </div>
       </div>
 
