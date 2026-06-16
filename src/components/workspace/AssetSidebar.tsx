@@ -146,7 +146,7 @@ export default function AssetSidebar() {
           className={`p-1 hover:bg-muted rounded text-muted-foreground hover:text-primary transition-all cursor-pointer shrink-0 ${
             isOpen 
               ? "opacity-100 text-primary bg-muted" 
-              : "opacity-0 group-hover/parent:opacity-100 group-hover/child:opacity-100 focus:opacity-100"
+              : "opacity-0 group-hover:opacity-100 focus:opacity-100"
           }`}
           title={language === 'zh' ? '管理系列归属' : 'Manage Collections'}
         >
@@ -514,13 +514,13 @@ export default function AssetSidebar() {
     : garmentCards
 
   return (
-    <aside className="w-66 border-r border-border bg-card/50 flex flex-col hidden md:flex shrink-0">
+    <aside className="w-80 border-r border-border bg-card/50 flex flex-col hidden md:flex shrink-0">
       <div className="p-4 border-b border-border flex items-center space-x-2">
         <Tags className="w-5 h-5 text-primary" />
         <span className="font-outfit font-semibold text-sm truncate uppercase tracking-wider">{language === 'zh' ? '设计资产库' : 'Asset Library'}</span>
       </div>
       
-      <div className="flex-1 overflow-y-auto p-4 space-y-6">
+      <div className="flex-1 overflow-y-auto p-4 pb-32 space-y-6">
         {/* Style DNA Library */}
         <div>
           <div className="flex items-center justify-between mb-2">
@@ -711,7 +711,7 @@ export default function AssetSidebar() {
                     <li key={root.id} className="space-y-0.5">
                       {/* Parent Row */}
                       <div 
-                        className={`flex items-center w-full rounded-lg transition-all group/parent pr-2 ${
+                        className={`flex items-center w-full rounded-lg transition-all group pr-2 ${
                           activeGarment?.id === root.id 
                             ? "bg-primary/10 text-primary" 
                             : "hover:bg-muted/60 text-foreground"
@@ -761,9 +761,9 @@ export default function AssetSidebar() {
                             const isVarActive = activeGarment?.id === variant.id;
                             
                             return (
-                              <li key={variant.id} className="relative pl-5 group/child flex items-center pr-2">
+                              <li key={variant.id} className="relative pl-5 group flex items-center pr-2">
                                 {/* Tree connector horizontal line */}
-                                <div className="absolute left-[11px] top-1/2 -translate-y-1/2 w-3.5 h-px bg-border/60" />
+                                <div className="absolute left-[11px] top-1/2 -translate-y-1/2 w-2 h-px bg-border/60" />
                                 
                                 <Button
                                   variant={isVarActive ? "secondary" : "ghost"}
