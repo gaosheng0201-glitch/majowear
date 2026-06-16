@@ -396,6 +396,39 @@ Output only the category name ('DEEP_THINK', 'TOOL' or 'SEARCH') without any oth
           const args = call.args as any;
           
           let finalPrompt = args.prompt;
+
+          // 1. Identify and load the predecessor garment image (Immediate Predecessor Principle)
+          let editBaseImagePart: any = null;
+          try {
+            let targetParentGarment = parentGarmentData;
+            // If the agent explicitly passed a parent_id, fetch its data to get the correct version
+            if (args.parent_id && args.parent_id !== parentVersionId) {
+              const { data } = await supabase
+                .from('garment_cards')
+                .select('*')
+                .eq('id', args.parent_id)
+                .single();
+              if (data) {
+                targetParentGarment = data;
+              }
+            }
+
+            if (targetParentGarment && targetParentGarment.images && targetParentGarment.images.length > 0) {
+              console.log('[Agent Image Edit] Loading predecessor image (ID:', targetParentGarment.id, ') for conversational semantic editing:', targetParentGarment.images[0]);
+              editBaseImagePart = await imageUrlToPart(targetParentGarment.images[0]);
+            }
+          } catch (err: any) {
+            // Throw a highly informative error to notify about network/proxy blocking issues
+            throw new Error(`Failed to load predecessor garment image for editing: ${err.message}. If running locally, please ensure your proxy (e.g. Clash) is not blocking loopback requests to localhost/127.0.0.1.`);
+          }
+
+          // 2. Adjust prompt semantic prefix based on inputs
+          if (editBaseImagePart) {
+            finalPrompt = `Using the provided base fashion design image as a reference, change only the details specified: ${finalPrompt}. Keep all other parts of the garment, background, and lighting completely unchanged.`;
+          } else if (imageParts && imageParts.length > 0) {
+            finalPrompt = `Turn the provided sketch/design image into a polished fashion product photography, strictly following the silhouette and lines: ${finalPrompt}`;
+          }
+
           if (displayMode === 'white_background') {
             finalPrompt += `, professional studio fashion product photography, clean solid white background, flat lay composition, soft diffused ambient light, micro-texture details visible, high-end commercial aesthetic`;
           } else {
@@ -407,9 +440,18 @@ Output only the category name ('DEEP_THINK', 'TOOL' or 'SEARCH') without any oth
 
           try {
             if (imageGenModel.startsWith('gemini-')) {
+              // 3. Construct multimodal parts list
+              const parts: any[] = [];
+              if (editBaseImagePart) {
+                parts.push(editBaseImagePart);
+              } else if (imageParts && imageParts.length > 0) {
+                parts.push(...imageParts);
+              }
+              parts.push({ text: finalPrompt });
+
               const imageGenResponse = await ai.models.generateContent({
                 model: imageGenModel,
-                contents: [{ role: 'user', parts: [{ text: finalPrompt }] }],
+                contents: [{ role: 'user', parts }],
                 config: {
                   responseModalities: ['IMAGE'],
                   imageConfig: { aspectRatio: '1:1' }
