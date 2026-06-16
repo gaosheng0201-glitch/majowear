@@ -397,9 +397,9 @@ Output only the category name ('DEEP_THINK', 'TOOL' or 'SEARCH') without any oth
           
           let finalPrompt = args.prompt;
           if (displayMode === 'white_background') {
-            finalPrompt += `, professional studio fashion product photography, clean solid white background, flat lay or ghost mannequin style, high resolution detail, 8k, photorealistic`;
+            finalPrompt += `, professional studio fashion product photography, clean solid white background, flat lay composition, soft diffused ambient light, micro-texture details visible, high-end commercial aesthetic`;
           } else {
-            finalPrompt += `, professional fashion editorial photoshoot, model wearing the garment, full body shot, outdoor city street style or studio lighting, realistic skin textures, 8k, cinematic lighting, photorealistic`;
+            finalPrompt += `, professional fashion editorial photoshoot, model wearing the garment, full body shot, natural light, soft focus background, organic texture, high-end fashion magazine look`;
           }
 
           let generatedImageBuffer: Buffer;

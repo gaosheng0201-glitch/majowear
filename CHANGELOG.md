@@ -2,6 +2,20 @@
 
 All notable changes and implementations for the AI Personal Fashion Studio project are documented in this file.
 
+## [1.2.0] - 2026-06-16
+
+### Added
+- **AI Streaming Response & Skeletons**
+  - **Dynamic State Stream (`POST /api/agent/generate`)**: Enabled real-time JSON stream output of the agent execution steps (understanding -> thinking/searching -> rendering -> saving) using Next.js `ReadableStream` response.
+  - **High-Fidelity Shimmering Skeletons**: Designed custom shimmering loading placeholders in `AgentChat.tsx` representing garment cards, fabric cards, and Style DNA cards. Displays appropriate card skeleton when the backend is rendering and smoothly replaces it with real cards upon completion.
+  - **Markdown & Mention Parser**: Integrated structured Markdown rendering using rich element mapping. Automatically renders headings, lists, bold text, and seamlessly embeds clickable `@款式` tags within the flow of markdown text.
+- **Dual-Model Tiered Routing**
+  - Upgraded semantic intent classifier to route strong reasoning/analytical prompts containing keywords like "思考" or "对比" to `gemini-3.1-pro-preview` with native `thinkingConfig` (thinking level `HIGH`), while routing regular tool calls to `gemini-3.5-flash`.
+
+### Changed
+- **Header UI Simplification**: Removed the Layout Switcher and Image Gen Model Switcher dropdown dropdown select menus from the project workspace header. Maintained Zustand store state bindings for backward payload compatibility and future settings page integration.
+- **Image Generation Prompt Modernization**: Updated prompt suffixes for flat lay (`white_background`) and model (`on_body`) modes in `route.ts`. Swapped legacy keyword stuffing (`8k`, `photorealistic`) with clean, descriptive natural language descriptors optimized for Gemini 3.1 Flash Image (Nano Banana 2).
+
 ## [1.1.0] - 2026-06-16
 
 ### Added

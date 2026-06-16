@@ -55,21 +55,70 @@ graph TD
 
 ## 三、 技术架构与工具链设计
 
-后端采用 Google Gemini API，利用 **功能调用（Function Calling）** 与多模态能力驱动设计流程：
+后端基于 Google Gen AI SDK (`@google/genai`) 配合多模态能力与功能调用，实现了精密的意图分流与状态同步架构：
 
-### 1. 结构化工具调用（Tools Declarations）
+```mermaid
+graph TD
+    User([用户输入]) --> Classifier[意图分类器: gemini-3.5-flash]
+    
+    Classifier -->|DEEP_THINK 推理意图| ProModel[gemini-3.1-pro-preview]
+    Classifier -->|TOOL 生图/保存资产| FlashModel[gemini-3.5-flash]
+    Classifier -->|SEARCH 事实问答| FlashSearch[gemini-3.5-flash + Google Search]
+    
+    ProModel -->|开启 thinkingConfig| StreamOutput[ReadableStream 流式输出]
+    FlashModel -->|调用 Fuction Call| StreamOutput
+    
+    StreamOutput -->|推送状态/渲染骨架屏| Frontend((前端 AgentChat))
+```
+
+### 1. 结构化工具调用 (Tools Declarations)
 系统为 Agent 装备了三组核心生产力工具：
 *   `generate_garment_design`：款式生成与迭代工具。包含详细的款式部位参数（fit, collar, sleeves, pockets, closures, details）以及 AI 设计评审模块（style_match_score 等）。
 *   `create_style_dna`：风格基因提取工具。将审美风格沉淀为数据库记录。
 *   `create_fabric_card`：面料参数生成工具。沉淀面料物理属性与对应的渲染提示词。
 
-### 2. 增强型多模态输入与 Search Grounding
-*   **双模型协同**：利用高速模型进行意图分类（区分工具调用与一般问答检索），利用专业模型（Gemini 2.5 Pro）处理复杂的款式规格生成，并在普通问答时自动启用 Google 搜索增强（Google Search Grounding），引用真实来源。
-*   **多模态传参**：支持将手绘草图、面料样图作为附件，直接转换为 Inline Parts 传递给 Gemini 进行视效生成与分析。
+### 2. 双模型分级智能路由 (Tiered Routing)
+为兼顾执行效率与深层推理能力，系统采用两步意图分类路由策略：
+*   **前置意图分类**：使用极速模型 `gemini-3.5-flash` 对用户输入进行前置分类，划分为 `DEEP_THINK`、`TOOL` 或 `SEARCH` 意图，防止 Gemini 内部 API 工具与 Search Grounding 发生冲突。
+*   **深度推理分流 (`DEEP_THINK`)**：若用户请求涉及复杂设计分析或包含“思考”、“对比”、“为什么”等强推理词，自动流转至 **`gemini-3.1-pro-preview`**，并激活大模型的原生思考能力（`thinkingConfig` 设为 `HIGH` 级别），以输出详尽的推理思维链。
+*   **常规工具执行 (`TOOL` / `SEARCH`)**：若是常规款式/面料卡生成，则交由 `gemini-3.5-flash` 直连工具集，极大缩减生成延迟。
+
+### 3. 真实状态事件流 (Status Streaming)
+*   **基于 API 的流输出**：在 `/api/agent/generate` API 中支持 `stream: true` 传参，启用底层 Node.js 读写流。
+*   **业务进度即时推送**：随着后端编排逻辑的运转，AI 依次向流中写入当前业务节点的 JSON 事件状态：
+    1. `understanding` (正在理解设计诉求...)
+    2. `thinking` / `searching` (正在深度推理 / 正在联网搜索中...)
+    3. `rendering` (包含 `target` 属性：正在调用生图引擎渲染效果图...)
+    4. `saving` (正在将设计资产沉淀至数据库...)
+*   **卡片级高保真骨架屏 (Shimmering Skeletons)**：
+    *   在耗时最长的生图与写入阶段 (`rendering` 状态)，前端聊天界面根据流中携带的 `target` 类型（款式、面料、风格），立即渲染出对应的 **Shimmering 骨架占位卡片**（如款式卡片呈现左图右文横线闪烁，面料卡片呈现物理数据排版占位）。
+    *   流彻底结束后，卡片骨架屏以微小的渐变动画平滑替换为真实的互动卡片，彻底消除了页面的“假进度”与突兀感。
+
+### 4. 极致 Markdown 渲染与 Mention 融合
+*   聊天对话泡集成了轻量级 React Markdown 渲染引擎，自动将后端返回的 MD 格式进行语法块级（Block-level）渲染。
+*   支持在加粗或列表容器内，完美解析并排版交互式的 `@款式` Pill 标签，保证 HTML DOM 树完全合规。
 
 ---
 
-## 四、 数据库与工程持久化
+## 四、 生图提示词现代优化与图像编辑 API 分析
+
+### 1. Gemini 3.1 Flash Image 生图提示词优化 (Prompt Modernization)
+旧式图像模型常依赖关键字堆砌（如 `8k`、`photorealistic` 等），但这些词汇在面对现代多模态模型（Imagen 3 / Nano Banana 2）时，极易破坏大模型的自然理解并降低细节输出质量。
+因此，后端去除了所有堆砌的“垃圾修饰词”，升级为以**自然语言**形式约束的“光影、材质与商业级排版”后缀：
+*   **款式平铺图 (`white_background`)**：
+    `... clean solid white background, flat lay composition, soft diffused ambient light, micro-texture details visible, high-end commercial aesthetic`
+*   **模特上身图 (`on_body`)**：
+    `... full body shot, natural light, soft focus background, organic texture, high-end fashion magazine look`
+
+### 2. Gemini 专门图像编辑 API (models.editImage) 技术路线分析
+*   **API 概况**：Google Gen AI SDK 在 Vertex AI 环境下提供了 `models.editImage` 方法，支持通过传入**参考图像 (reference_images)** 和**局部遮罩 (mask)** 来做精细的局部重绘 (Inpainting) 与画幅拓宽 (Outpainting)。
+*   **MajoWear 的架构选择**：
+    *   目前系统专注于 **“元数据驱动的服装设计”**：用户通过自然语言调整领子或口袋，Agent 会先修改数据库中该服装的结构化 Schema (如 collar 改为 V 领)，然后**重新渲染**款式图。这保证了设计参数与视觉呈现的强一致性。
+    *   **未来局部画布修改路径**：若后续引入“局部画笔重绘涂抹”，系统可通过 Canvas 导出涂抹蒙版，直接调用 `models.editImage` 在原图的基础坐标上对局部进行修饰，提供像素级画笔编辑的扩展接口。
+
+---
+
+## 五、 数据库与工程持久化
 
 为保障页面刷新或重新进入项目后卡片展示与关联关系的持久化，系统在 Supabase PostgreSQL 层面进行了优化设计：
 
@@ -84,3 +133,4 @@ graph TD
 > **后续优化方向**：
 > 1. 可以为 `@` 联想列表添加键盘上下键选取和回车选取的辅助控制。
 > 2. 当风格库或面料库越来越庞大时，可以在弹窗列表或下拉联想中添加快速模糊搜索过滤功能。
+
