@@ -201,7 +201,7 @@ const generateGarmentTool = {
     properties: {
       title: { type: Type.STRING, description: 'Descriptive title of the garment' },
       category: { type: Type.STRING, description: 'Category of the clothing (e.g., Jacket, Pants, Shirt, Dress, Knitwear)' },
-      design_rationale: { type: Type.STRING, description: 'Explanation of design choices, matching style DNA and fabric properties' },
+      design_rationale: { type: Type.STRING, description: 'Explanation of the design concept, style choices (silhouettes, cuts, aesthetic details), and how they harmonize with the style DNA and fabric properties' },
       prompt: { type: Type.STRING, description: 'Optimized English prompt for the image generation model. Describe styling, fit, collar, sleeves, closure, pockets, details.' },
       negative_prompt: { type: Type.STRING, description: 'English negative prompt' },
       fit: { type: Type.STRING, description: 'e.g. Oversized, Slim, Cropped, Regular' },
@@ -630,8 +630,9 @@ ${referencedGarmentsData.map(rg => `- Title: ${rg.title} (ID: ${rg.id})
 ` : ''}
 
 Constraint Alignment Guidelines:
-- You MUST strictly align the designed garment's prompt, details, and design_rationale with the active Fabric Properties (composition, texture, prompt description) and active Style DNA (keywords, colors, silhouettes) provided above.
-- If a Parent Garment Card is provided, you must completely replace its fabric, texture, weight, and composition references with the active Fabric Properties. For example, if the active Fabric Card is "Baby Cashmere", do not mention "Merino-Cotton" or "2x2 Ribbed Knit" in the prompt, details, or design rationale, even if the parent garment used them. Overwrite them completely with the active fabric card's properties (e.g., describe it as "luxury Baby Cashmere" and use the fabric's prompt description).
+- You MUST align the designed garment's prompt, details, and design_rationale with the active Fabric Properties and Style DNA provided above.
+- Balance in Design Rationale: The 'design_rationale' must provide a holistic explanation of the design choices—such as silhouettes, structural cuts, collar/sleeve styles, visual highlights, and aesthetic vibe—alongside how these choices synergize with the physical properties of the active fabric. It should not just list the fabric properties, but explain the fashion design intent.
+- Fabric Reference Cleanliness: If a Parent Garment Card is provided, ensure no outdated fabric references from the parent garment leak into the new design's prompt, details, or rationale. For example, if the active fabric is "Baby Cashmere" and the parent used "Merino-Cotton", update the fabric mentions to the active one without letting fabric details crowd out the discussion of the garment's style and structural features.
 - Do not let the parent garment's description override the active fabric card's composition or texture.
 
 Intent Guidelines:
