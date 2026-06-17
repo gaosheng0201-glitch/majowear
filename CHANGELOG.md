@@ -2,6 +2,18 @@
 
 All notable changes and implementations for the AI Personal Fashion Studio project are documented in this file.
 
+## [1.6.1] - 2026-06-17
+
+### Added
+- **Conflict Prompt Reversion & Designer Persona**
+  - **Designer Tone Questions**: Restores natural, professional, and concise (under 25 characters) designer-perspective questions inside `detectAndResolveConflict` to point out suitability conflicts or trade-offs.
+  - **Generalization of Instruction Prompt**: Completely removes specific hardcoded examples (such as references to wetsuits or wool) from the backend NLP instruction rules, preventing model bias and enhancing general suitability evaluation.
+  - **Dynamic Multi-option Generation**: Employs dynamic 3-5 options based on context, supporting UUIDs of existing cards, optional new concept recommendations (`custom_<concept_slug>`), and a universal manual input option.
+- **Card-level Inline Custom Input Flow**
+  - **Inline Expansion Form**: Replaces the old behavior of focusing the bottom chat editor with an inline text input form directly inside the unresolved conflict card.
+  - **Immediate Resolve & Gray-out**: Clicking confirm on the inline input immediately marks the card as `resolved: true` in the DB and local state, setting `selectedOptionLabel` to the custom text (e.g. "自定义面料: 重磅真丝"). This prevents duplicate clicks and keeps chat history clean.
+  - **Automated Assistant Agent Trigger**: Bypasses the conflict interceptor (`conflictResolved: true`) and resubmits the request using the custom parameter (e.g., `custom_重磅真丝`), seamlessly triggering the Assistant Agent specs generation and database saving pipeline.
+
 ## [1.6.0] - 2026-06-17
 
 ### Added
