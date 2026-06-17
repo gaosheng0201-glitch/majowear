@@ -318,6 +318,10 @@ export default function AgentChat() {
   const [settingsResolution, setSettingsResolution] = useState<'1024x1024' | '2048x2048' | '4096x4096'>('1024x1024')
   const [savingSettings, setSavingSettings] = useState(false)
 
+  // Conflict resolution inline custom input states
+  const [activeCustomInputMsgId, setActiveCustomInputMsgId] = useState<string | null>(null)
+  const [customInputValue, setCustomInputValue] = useState('')
+
   // Sync settings when activeProject changes
   useEffect(() => {
     if (activeProject) {
@@ -786,6 +790,34 @@ export default function AgentChat() {
     }
   }
 
+  // Handle confirming inline custom input
+  const handleConfirmCustomInput = async (messageId: string) => {
+    const cleanVal = customInputValue.trim()
+    if (!cleanVal) return
+
+    const currentMessages = useStudioStore.getState().messages
+    const msg = currentMessages.find(m => m.id === messageId)
+    if (!msg || !msg.conflictResolution) return
+
+    const { conflictType } = msg.conflictResolution
+
+    // Reset inline input state
+    setActiveCustomInputMsgId(null)
+    setCustomInputValue('')
+
+    // Assemble virtual option object
+    const customOption = {
+      id: 'custom_input',
+      label: conflictType === 'fabric'
+        ? `${language === 'zh' ? '自定义面料' : 'Custom Fabric'}: ${cleanVal}`
+        : `${language === 'zh' ? '自定义风格' : 'Custom Style'}: ${cleanVal}`,
+      value: `custom_${cleanVal}`
+    }
+
+    // Call handleSelectConflictOption to resolve and resubmit
+    await handleSelectConflictOption(messageId, customOption)
+  }
+
   // Handle click on dynamic conflict card option
   const handleSelectConflictOption = async (
     messageId: string, 
@@ -982,17 +1014,64 @@ export default function AgentChat() {
                     </div>
                   ) : (
                     <div className="grid gap-2">
-                      {msg.conflictResolution.options.map((opt: any) => (
-                        <button
-                          key={opt.id}
-                          type="button"
-                          onClick={() => handleSelectConflictOption(msg.id, opt)}
-                          className="w-full text-left text-xs bg-background/50 hover:bg-background border border-border hover:border-primary/40 rounded-md p-2.5 transition-all duration-200 cursor-pointer text-muted-foreground hover:text-foreground font-medium flex justify-between items-center group"
-                        >
-                          <span>{opt.label}</span>
-                          <ChevronRight className="w-3.5 h-3.5 text-muted-foreground group-hover:text-primary transition-colors shrink-0 ml-1.5" />
-                        </button>
-                      ))}
+                      {activeCustomInputMsgId === msg.id ? (
+                        <div className="space-y-2 border border-primary/20 rounded-md p-2.5 bg-background/50">
+                          <input
+                            type="text"
+                            value={customInputValue}
+                            onChange={(e) => setCustomInputValue(e.target.value)}
+                            placeholder={msg.conflictResolution.conflictType === 'fabric' 
+                              ? (language === 'zh' ? "请输入您想要的面料..." : "Enter your desired fabric...") 
+                              : (language === 'zh' ? "请输入您想要的风格..." : "Enter your desired style...")}
+                            className="w-full text-xs bg-background border border-border rounded-md px-2.5 py-1.5 focus:outline-none focus:border-primary/50 text-foreground"
+                            autoFocus
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                handleConfirmCustomInput(msg.id);
+                              }
+                            }}
+                          />
+                          <div className="flex justify-end space-x-2">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setActiveCustomInputMsgId(null)
+                                setCustomInputValue('')
+                              }}
+                              className="text-[10px] border border-border bg-background hover:bg-accent text-foreground px-2.5 py-1 rounded-md transition-colors"
+                            >
+                              {language === 'zh' ? '取消' : 'Cancel'}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleConfirmCustomInput(msg.id)}
+                              className="text-[10px] bg-primary hover:bg-primary/90 text-primary-foreground font-semibold px-2.5 py-1 rounded-md transition-colors"
+                            >
+                              {language === 'zh' ? '确定' : 'Confirm'}
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        msg.conflictResolution.options.map((opt: any) => (
+                          <button
+                            key={opt.id}
+                            type="button"
+                            onClick={() => {
+                              if (opt.value === 'custom' || opt.id === 'custom') {
+                                setActiveCustomInputMsgId(msg.id)
+                                setCustomInputValue('')
+                              } else {
+                                handleSelectConflictOption(msg.id, opt)
+                              }
+                            }}
+                            className="w-full text-left text-xs bg-background/50 hover:bg-background border border-border hover:border-primary/40 rounded-md p-2.5 transition-all duration-200 cursor-pointer text-muted-foreground hover:text-foreground font-medium flex justify-between items-center group"
+                          >
+                            <span>{opt.label}</span>
+                            <ChevronRight className="w-3.5 h-3.5 text-muted-foreground group-hover:text-primary transition-colors shrink-0 ml-1.5" />
+                          </button>
+                        ))
+                      )}
                     </div>
                   )}
                 </div>

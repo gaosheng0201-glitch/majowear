@@ -116,7 +116,7 @@ async function detectAndResolveConflict({
 }) {
   try {
     const nlpAnalysisPrompt = `
-You are a professional fashion studio assistant. Your task is to analyze the user's design request and identify any semantic references to fabrics or style DNAs. Then, compare them with the active and available presets in the studio workspace to determine if there is a conflict.
+You are a professional fashion designer. Your task is to analyze the user's design request and identify any semantic references to fabrics or style DNAs. Then, compare them with the active and available presets in the studio workspace to determine if there is a conflict or suitability trade-off.
 
 ---
 ACTIVE WORKSPACE CONTEXT:
@@ -135,15 +135,21 @@ USER REQUEST:
 
 ---
 INSTRUCTIONS & CRITICAL RULES:
-1. Parse the user request to find references to fabrics (e.g. "Merino", "羊绒", "卫衣布") or style DNAs (e.g. "Techwear", "工装风").
+1. Parse the user request to find references to fabrics or style DNAs.
 2. Check if the mentioned material/style differs from the Active Fabric Card or Active Style DNA.
-3. SILENT EXECUTION RULE: If the user explicitly asks to use or switch to a fabric/style by name (e.g. "用 Merino", "换成 Merino 针织面料") and it can be matched with high confidence (95%+) to a single available card in the project, set "hasConflict" to false, and set "matchedEntityId" to that card's ID. We will apply it silently without popping options.
-4. AMBIGUITY INTERCEPT RULE: If the user requests to "change fabric" / "switch style" but the exact target is ambiguous (e.g., "换个面料试下", "换成针织的" when multiple exist), or if they express a direct contradiction (e.g. they say "用刚才的面料" but they also just manually selected a different one on the sidebar), set "hasConflict" to true.
-5. If "hasConflict" is true:
+3. SILENT EXECUTION RULE: If the user explicitly asks to use or switch to a fabric/style by name and it can be matched with high confidence (95%+) to a single available card in the project, set "hasConflict" to false, and set "matchedEntityId" to that card's ID. We will apply it silently without popping options.
+4. AMBIGUITY & CONFLICT RULE: If the user request implies a different material/style than the active card, or if there is a clear suitability conflict (such as using a fabric or style that does not align with the requested garment item, requiring a design trade-off), set "hasConflict" to true.
+5. DESIGNER DECISION PURPOSE: The purpose of raising a conflict is to respect the designer's creative intent when a design trade-off or suitability conflict is detected, letting them make a deliberate choice.
+6. If "hasConflict" is true:
    - Identify "conflictType" ("fabric", "style_dna").
-   - Generate a brief, professional, fashion-designer-like question (under 40 characters) explaining the conflict context and asking for a decision. Do NOT list the options or alternatives in the question text. Match the language of the user's prompt (e.g. write in English if prompt is English, Chinese if prompt is Chinese).
-   - Generate 2-4 dynamic options. Make option labels sound like creative design choices (e.g., using available presets or custom overrides). Include a custom option with value "custom".
-6. If there is no mismatch or the request aligns with the active state, set "hasConflict" to false. If "hasConflict" is false, set "question" to "" and "options" to [].
+   - Generate a brief, natural, professional question in the designer's own tone (under 25 characters) pointing out the suitability conflict or design trade-off and asking for confirmation. Do NOT list the options or alternatives in the question text. Match the language of the user's prompt (e.g., write in Chinese if prompt is in Chinese, English if in English).
+   - Generate 3-5 dynamic options. For each option, set both "id" and "value" to the same string.
+   - The options list must consist of:
+     a) Option to retain the active preset (value and id set to the UUID of the active card, label expressing retention of the active card).
+     b) Options to switch to existing project cards if they are relevant alternatives (value and id set to their UUIDs).
+     c) Optional recommended concept (LLM decides whether to recommend a new concept): If you recommend a new fabric or style concept not currently in the project cards, set the value and id to "custom_" followed by the lowercase English/slugified name of the concept (e.g. "custom_neoprene"). The label should be a professional choice indicating the new recommended material/style name.
+     d) Universal manual input option (MUST always be the last option in the list): set value and id strictly to "custom". The label must be "自定义其他面料" (if fabric) or "自定义其他风格" (if style) in Chinese, or "Custom other fabric" / "Custom other style" in English.
+7. If there is no mismatch or the request aligns with the active state, set "hasConflict" to false. If "hasConflict" is false, set "question" to "" and "options" to [].
 `;
 
     const response = await ai.models.generateContent({
