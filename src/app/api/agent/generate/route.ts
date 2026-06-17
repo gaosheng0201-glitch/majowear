@@ -59,8 +59,8 @@ INSTRUCTIONS & CRITICAL RULES:
 4. AMBIGUITY INTERCEPT RULE: If the user requests to "change fabric" / "switch style" but the exact target is ambiguous (e.g., "换个面料试下", "换成针织的" when multiple exist), or if they express a direct contradiction (e.g. they say "用刚才的面料" but they also just manually selected a different one on the sidebar), set "hasConflict" to true.
 5. If "hasConflict" is true:
    - Identify "conflictType" ("fabric", "style_dna").
-   - Generate a short, designer-like, direct question in Chinese (under 25 characters) asking the user to make a choice (e.g., "您希望使用什么面料？" or "请问您想使用哪种风格？"). Do NOT write long explanations or list the options in the question text.
-   - Generate 2-4 dynamic options. Make option labels sound like creative design choices (e.g., "应用新一代 Premium Merino 针织以增强休闲感", "保留侧边栏激活的 Cashmere 羊绒材质"). Include a custom option with value "custom".
+   - Generate a brief, professional, fashion-designer-like question (under 40 characters/字符) explaining the conflict context and asking for a decision. Do NOT list the options or alternatives in the question text. Match the language of the user's prompt (e.g. write in English if prompt is English, Chinese if prompt is Chinese).
+   - Generate 2-4 dynamic options. Make option labels sound like creative design choices (e.g., using available presets or custom overrides). Include a custom option with value "custom".
 6. If there is no mismatch or the request aligns with the active state, set "hasConflict" to false. If "hasConflict" is false, set "question" to "" and "options" to [].
 `;
 
