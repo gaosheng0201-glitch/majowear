@@ -2,6 +2,18 @@
 
 All notable changes and implementations for the AI Personal Fashion Studio project are documented in this file.
 
+## [1.6.4] - 2026-06-17
+
+### Added
+- **Bilingual Response Support for Backend Tools**
+  - Implements dynamic language detection (`/[\u4e00-\u9fa5]/`) on the user prompt to determine the language preference.
+  - Adapts `generate_garment_design`, `create_style_dna`, and `create_fabric_card` tool outputs to reply dynamically in English or Chinese.
+
+### Fixed
+- **Conflict Resolution Card Duplication on Existing Choice**
+  - Resolves a bug where selecting "使用已有" (use existing) in a conflict card would still trigger the main agent to create a new card.
+  - Updates tool execution handlers to detect if the conflict was resolved with an existing UUID. If so, it immediately activates the existing card with a clean confirmation message and skips the database `INSERT`.
+
 ## [1.6.3] - 2026-06-17
 
 ### Added
