@@ -1650,25 +1650,19 @@ export default function AgentChat() {
 
           <div
             ref={editorRef}
-            contentEditable={!chatLoading && !!activeStyleDnaId && !!activeFabricCardId}
+            contentEditable={!chatLoading}
             onInput={handleEditorInput}
             onKeyDown={handleKeyDown}
             onKeyUp={saveSelection}
             onMouseUp={saveSelection}
             onFocus={saveSelection}
-            data-placeholder={
-              !activeStyleDnaId 
-                ? (language === 'zh' ? "请先在左侧选择风格 DNA..." : "Select a Style DNA first...") 
-                : !activeFabricCardId 
-                  ? (language === 'zh' ? "请先在左侧选择面料样卡..." : "Select a Fabric Card first...") 
-                  : t.agentInputPlaceholder
-            }
+            data-placeholder={t.agentInputPlaceholder}
             className="flex-1 bg-muted/50 border border-border focus:border-primary/50 focus:ring-1 focus:ring-primary/50 rounded-lg px-2.5 py-1.5 min-h-[36px] max-h-36 overflow-y-auto text-xs outline-none cursor-text empty:before:content-[attr(data-placeholder)] empty:before:text-muted-foreground/60 select-text leading-relaxed whitespace-pre-wrap break-all py-2"
           />
           <Button 
             type="submit" 
             size="icon" 
-            disabled={chatLoading || !activeStyleDnaId || !activeFabricCardId} 
+            disabled={chatLoading} 
             className="shrink-0"
           >
             <Send className="w-4 h-4" />

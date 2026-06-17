@@ -15,6 +15,9 @@ All notable changes and implementations for the AI Personal Fashion Studio proje
   - Integrates state reuse verification checks in `create_fabric_card` and `create_style_dna` tool handlers in the backend `route.ts`.
   - Reuses the existing `createdFabricCard` or `createdStyleDna` generated in the pre-generation pipeline Stage 1.5, skipping duplicate database `INSERT` commands if the card was already created by the sub-agent.
   - Guarantees that exactly one card is added to the project libraries for any generation workflow path, while preserving the main agent's full ability to call creation tools during non-conflicting direct prompts.
+- **Legacy Chat Input Editor Lock**
+  - Removes the obsolete restriction that locked/disabled the chat editor input box (`contentEditable={false}`) and disabled the send button when no active Style DNA or Fabric Card was selected.
+  - The input editor is now always editable, allowing users to send initial prompts directly to trigger conflict cards or dynamically create materials on-the-fly.
 
 ## [1.6.2] - 2026-06-17
 
