@@ -544,7 +544,7 @@ export default function AssetSidebar() {
                   <Button 
                     variant={activeStyleDnaId === style.id ? "secondary" : "ghost"}
                     className="flex-1 justify-start text-left text-sm h-auto py-1.5 px-2.5 align-middle truncate"
-                    onClick={() => setActiveStyleDnaId(style.id)}
+                    onClick={() => setActiveStyleDnaId(activeStyleDnaId === style.id ? null : style.id)}
                   >
                     <span className="truncate pr-2 flex-1">{style.name}</span>
                     {activeStyleDnaId === style.id && <Check className="w-3.5 h-3.5 text-primary shrink-0 ml-auto" />}
@@ -586,7 +586,7 @@ export default function AssetSidebar() {
                   <Button 
                     variant={activeFabricCardId === fabric.id ? "secondary" : "ghost"}
                     className="flex-1 justify-start text-left text-sm h-auto py-1.5 px-2.5 align-middle truncate"
-                    onClick={() => setActiveFabricCardId(fabric.id)}
+                    onClick={() => setActiveFabricCardId(activeFabricCardId === fabric.id ? null : fabric.id)}
                   >
                     <span className="truncate pr-2 flex-1">{fabric.name}</span>
                     {activeFabricCardId === fabric.id && <Check className="w-3.5 h-3.5 text-primary shrink-0 ml-auto" />}
@@ -738,7 +738,7 @@ export default function AssetSidebar() {
                           className={`flex-1 min-w-0 justify-start text-left text-sm h-auto py-1.5 px-1.5 text-ellipsis select-none bg-transparent hover:bg-transparent ${
                             activeGarment?.id === root.id ? "text-primary font-bold" : "text-foreground"
                           }`}
-                          onClick={() => setActiveGarment(root)}
+                          onClick={() => setActiveGarment(activeGarment?.id === root.id ? null : root)}
                         >
                           <Shirt className={`w-3.5 h-3.5 mr-2 shrink-0 ${activeGarment?.id === root.id ? "text-primary" : "text-muted-foreground group-hover/parent:text-foreground"}`} />
                           <span className="truncate">{root.title}</span>
@@ -772,7 +772,7 @@ export default function AssetSidebar() {
                                       ? "bg-primary/5 text-primary border-l-2 border-primary pl-2 rounded-l-none" 
                                       : "text-muted-foreground hover:text-foreground pl-2"
                                   }`}
-                                  onClick={() => setActiveGarment(variant)}
+                                  onClick={() => setActiveGarment(isVarActive ? null : variant)}
                                 >
                                   <span className="font-mono font-bold scale-90 mr-1.5 text-[9px] px-1 bg-muted/60 border border-border/40 rounded text-muted-foreground/80 group-hover/child:text-foreground shrink-0 select-none">
                                     v{idx + 1}

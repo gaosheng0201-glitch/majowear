@@ -198,7 +198,7 @@ export default function AgentChat() {
             <button
               key={index}
               type="button"
-              onClick={() => setActiveGarment(matchedGarment)}
+              onClick={() => setActiveGarment(activeGarment?.id === matchedGarment.id ? null : matchedGarment)}
               className="inline-flex items-center gap-1 bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20 rounded px-1.5 py-0.5 text-[10px] font-medium transition-colors mx-0.5 align-middle mb-0.5 select-none"
             >
               {part}
@@ -542,7 +542,7 @@ export default function AgentChat() {
     if (projectId) {
       loadChatHistory()
     }
-  }, [projectId, supabase, setMessages, language, garmentCards, styleDnas, fabricCards])
+  }, [projectId, supabase, setMessages, language])
 
   // Helper to read and process chunk stream from backend
   const readStream = async (response: Response, agentMsgId: string) => {
@@ -724,7 +724,7 @@ export default function AgentChat() {
     setChatLoading(true)
 
     // Add user message
-    const userMsgId = Date.now().toString()
+    const userMsgId = crypto.randomUUID()
     addMessage({ 
       id: userMsgId, 
       role: 'user', 
@@ -733,7 +733,7 @@ export default function AgentChat() {
     })
 
     // Add agent thinking placeholder
-    const agentMsgId = (Date.now() + 1).toString()
+    const agentMsgId = crypto.randomUUID()
     addMessage({ 
       id: agentMsgId, 
       role: 'agent', 
@@ -760,7 +760,8 @@ export default function AgentChat() {
           stream: true,
           agentModel: activeProject?.agent_model || 'auto',
           agentStyle: activeProject?.agent_style || 'default',
-          imageResolution: activeProject?.image_resolution || '1024x1024'
+          imageResolution: activeProject?.image_resolution || '1024x1024',
+          agentMessageId: agentMsgId
         })
       })
 
@@ -874,7 +875,7 @@ export default function AgentChat() {
     }
 
     // 5. Append new Agent placeholder message and update conflict resolution state locally
-    const newAgentMsgId = Date.now().toString()
+    const newAgentMsgId = crypto.randomUUID()
     const updatedMessages = useStudioStore.getState().messages.map(m => {
       if (m.id === messageId && m.conflictResolution) {
         return {
@@ -920,7 +921,8 @@ export default function AgentChat() {
           conflictResolved: true, // Bypass interceptor!
           agentModel: activeProject?.agent_model || 'auto',
           agentStyle: activeProject?.agent_style || 'default',
-          imageResolution: activeProject?.image_resolution || '1024x1024'
+          imageResolution: activeProject?.image_resolution || '1024x1024',
+          agentMessageId: newAgentMsgId
         })
       })
 
@@ -981,6 +983,15 @@ export default function AgentChat() {
               uri: web.uri
             }
           }).filter((s: any) => s.uri)
+
+          // Resolve cards dynamically from Zustand store to avoid database reload loops
+          const resolvedGarmentCard = msg.garmentCard || (msg.garment_card_id ? garmentCards.find(g => g.id === msg.garment_card_id) : undefined)
+          
+          const createdStyleDnaId = msg.grounding_metadata?.createdStyleDnaId
+          const resolvedStyleDna = msg.createdStyleDna || (createdStyleDnaId ? styleDnas.find(s => s.id === createdStyleDnaId) : undefined)
+          
+          const createdFabricCardId = msg.grounding_metadata?.createdFabricCardId
+          const resolvedFabricCard = msg.createdFabricCard || (createdFabricCardId ? fabricCards.find(f => f.id === createdFabricCardId) : undefined)
 
           return (
             <div 
@@ -1075,13 +1086,13 @@ export default function AgentChat() {
                     </div>
                   )}
                 </div>
-              ) : msg.role === 'agent' && (msg.garmentCard || msg.createdStyleDna || msg.createdFabricCard) ? (
+              ) : msg.role === 'agent' && !msg.loading && (resolvedGarmentCard || resolvedStyleDna || resolvedFabricCard) ? (
                 <div className="mt-1">
-                  {msg.garmentCard && (() => {
-                    const isActive = activeGarment?.id === msg.garmentCard.id
+                  {resolvedGarmentCard && (() => {
+                    const isActive = activeGarment?.id === resolvedGarmentCard.id
                     return (
                       <div 
-                        onClick={() => msg.garmentCard && setActiveGarment(msg.garmentCard)}
+                        onClick={() => setActiveGarment(isActive ? null : resolvedGarmentCard)}
                         className={`cursor-pointer rounded-lg border p-2 flex items-center justify-between transition-all duration-200 ${
                           isActive 
                             ? 'bg-primary/5 border-primary/30 shadow-sm' 
@@ -1089,9 +1100,9 @@ export default function AgentChat() {
                         }`}
                       >
                         <div className="flex items-center space-x-2.5 truncate mr-2">
-                          {msg.garmentCard.images?.[0] && (
+                          {resolvedGarmentCard.images?.[0] && (
                             <div className="w-10 h-10 rounded border border-border overflow-hidden bg-muted shrink-0">
-                              <img src={msg.garmentCard.images[0]} alt="" className="w-full h-full object-cover" />
+                              <img src={resolvedGarmentCard.images[0]} alt="" className="w-full h-full object-cover" />
                             </div>
                           )}
                           <div className="truncate">
@@ -1100,11 +1111,11 @@ export default function AgentChat() {
                                 {language === 'zh' ? '设计已生成' : 'Design Generated'}
                               </span>
                               <span className="text-[8px] text-muted-foreground uppercase font-mono tracking-wider shrink-0 bg-muted px-1 rounded">
-                                {msg.garmentCard.category}
+                                {resolvedGarmentCard.category}
                               </span>
                             </div>
                             <h4 className="text-xs font-semibold mt-1 text-foreground truncate max-w-[120px] lg:max-w-[150px]">
-                              {msg.garmentCard.title}
+                              {resolvedGarmentCard.title}
                             </h4>
                           </div>
                         </div>
@@ -1122,11 +1133,11 @@ export default function AgentChat() {
                     )
                   })()}
 
-                  {msg.createdStyleDna && (() => {
-                    const isDnaActive = activeStyleDnaId === msg.createdStyleDna.id
+                  {resolvedStyleDna && (() => {
+                    const isDnaActive = activeStyleDnaId === resolvedStyleDna.id
                     return (
                       <div 
-                        onClick={() => msg.createdStyleDna && setActiveStyleDnaId(msg.createdStyleDna.id)}
+                        onClick={() => setActiveStyleDnaId(isDnaActive ? null : resolvedStyleDna.id)}
                         className={`cursor-pointer rounded-lg border p-2 flex items-center justify-between transition-all duration-200 ${
                           isDnaActive 
                             ? 'bg-primary/5 border-primary/30 shadow-sm' 
@@ -1140,7 +1151,7 @@ export default function AgentChat() {
                             </span>
                           </div>
                           <h4 className="text-xs font-semibold mt-1 text-foreground truncate max-w-[120px] lg:max-w-[150px]">
-                            {msg.createdStyleDna.name}
+                            {resolvedStyleDna.name}
                           </h4>
                         </div>
                         <Button 
@@ -1157,11 +1168,11 @@ export default function AgentChat() {
                     )
                   })()}
 
-                  {msg.createdFabricCard && (() => {
-                    const isFabricActive = activeFabricCardId === msg.createdFabricCard.id
+                  {resolvedFabricCard && (() => {
+                    const isFabricActive = activeFabricCardId === resolvedFabricCard.id
                     return (
                       <div 
-                        onClick={() => msg.createdFabricCard && setActiveFabricCardId(msg.createdFabricCard.id)}
+                        onClick={() => setActiveFabricCardId(isFabricActive ? null : resolvedFabricCard.id)}
                         className={`cursor-pointer rounded-lg border p-2 flex items-center justify-between transition-all duration-200 ${
                           isFabricActive 
                             ? 'bg-primary/5 border-primary/30 shadow-sm' 
@@ -1169,9 +1180,9 @@ export default function AgentChat() {
                         }`}
                       >
                         <div className="flex items-center space-x-2.5 truncate mr-2">
-                          {msg.createdFabricCard.image && (
+                          {resolvedFabricCard.image && (
                             <div className="w-10 h-10 rounded border border-border overflow-hidden bg-muted shrink-0">
-                              <img src={msg.createdFabricCard.image} alt="" className="w-full h-full object-cover" />
+                              <img src={resolvedFabricCard.image} alt="" className="w-full h-full object-cover" />
                             </div>
                           )}
                           <div className="truncate">
@@ -1181,7 +1192,7 @@ export default function AgentChat() {
                               </span>
                             </div>
                             <h4 className="text-xs font-semibold mt-1 text-foreground truncate max-w-[120px] lg:max-w-[150px]">
-                              {msg.createdFabricCard.name}
+                              {resolvedFabricCard.name}
                             </h4>
                           </div>
                         </div>
@@ -1265,12 +1276,12 @@ export default function AgentChat() {
                       {/* Fabric Target */}
                       {(msg.loadingStatus?.includes('fabric') || msg.loadingTarget === 'fabric') && (
                         <div>
-                          {msg.createdFabricCard ? (
+                          {resolvedFabricCard ? (
                             (() => {
-                              const isFabricActive = activeFabricCardId === msg.createdFabricCard.id;
+                              const isFabricActive = activeFabricCardId === resolvedFabricCard.id;
                               return (
                                 <div 
-                                  onClick={() => msg.createdFabricCard && setActiveFabricCardId(msg.createdFabricCard.id)}
+                                  onClick={() => setActiveFabricCardId(isFabricActive ? null : resolvedFabricCard.id)}
                                   className={`cursor-pointer rounded-lg border p-2 flex items-center justify-between transition-all duration-200 ${
                                     isFabricActive 
                                       ? 'bg-primary/5 border-primary/30 shadow-sm' 
@@ -1278,9 +1289,9 @@ export default function AgentChat() {
                                   }`}
                                 >
                                   <div className="flex items-center space-x-2.5 truncate mr-2">
-                                    {msg.createdFabricCard.image && (
+                                    {resolvedFabricCard.image && (
                                       <div className="w-10 h-10 rounded border border-border overflow-hidden bg-muted shrink-0">
-                                        <img src={msg.createdFabricCard.image} alt="" className="w-full h-full object-cover" />
+                                        <img src={resolvedFabricCard.image} alt="" className="w-full h-full object-cover" />
                                       </div>
                                     )}
                                     <div className="truncate">
@@ -1290,7 +1301,7 @@ export default function AgentChat() {
                                         </span>
                                       </div>
                                       <h4 className="text-xs font-semibold mt-1 text-foreground truncate max-w-[120px] lg:max-w-[150px]">
-                                        {msg.createdFabricCard.name}
+                                        {resolvedFabricCard.name}
                                       </h4>
                                     </div>
                                   </div>
@@ -1324,12 +1335,12 @@ export default function AgentChat() {
                       {/* Style DNA Target */}
                       {(msg.loadingStatus?.includes('style') || msg.loadingTarget === 'style') && (
                         <div>
-                          {msg.createdStyleDna ? (
+                          {resolvedStyleDna ? (
                             (() => {
-                              const isDnaActive = activeStyleDnaId === msg.createdStyleDna.id;
+                              const isDnaActive = activeStyleDnaId === resolvedStyleDna.id;
                               return (
                                 <div 
-                                  onClick={() => msg.createdStyleDna && setActiveStyleDnaId(msg.createdStyleDna.id)}
+                                  onClick={() => setActiveStyleDnaId(isDnaActive ? null : resolvedStyleDna.id)}
                                   className={`cursor-pointer rounded-lg border p-2 flex items-center justify-between transition-all duration-200 ${
                                     isDnaActive 
                                       ? 'bg-primary/5 border-primary/30 shadow-sm' 
@@ -1343,7 +1354,7 @@ export default function AgentChat() {
                                       </span>
                                     </div>
                                     <h4 className="text-xs font-semibold mt-1 text-foreground truncate max-w-[120px] lg:max-w-[150px]">
-                                      {msg.createdStyleDna.name}
+                                      {resolvedStyleDna.name}
                                     </h4>
                                   </div>
                                   <Button 
@@ -1455,12 +1466,12 @@ export default function AgentChat() {
                   )}
 
                   {/* Render any created card while loading is still true (e.g. main agent is generating garment, but sub-agent has already created the fabric card) */}
-                  {!msg.loadingStatus?.includes('subagent') && !msg.loadingStatus?.includes('waiting_') && msg.createdFabricCard && (
+                  {!msg.loadingStatus?.includes('subagent') && !msg.loadingStatus?.includes('waiting_') && resolvedFabricCard && (
                     (() => {
-                      const isFabricActive = activeFabricCardId === msg.createdFabricCard.id;
+                      const isFabricActive = activeFabricCardId === resolvedFabricCard.id;
                       return (
                         <div 
-                          onClick={() => msg.createdFabricCard && setActiveFabricCardId(msg.createdFabricCard.id)}
+                          onClick={() => setActiveFabricCardId(isFabricActive ? null : resolvedFabricCard.id)}
                           className={`cursor-pointer rounded-lg border p-2 flex items-center justify-between transition-all duration-200 ${
                             isFabricActive 
                               ? 'bg-primary/5 border-primary/30 shadow-sm' 
@@ -1468,9 +1479,9 @@ export default function AgentChat() {
                           }`}
                         >
                           <div className="flex items-center space-x-2.5 truncate mr-2">
-                            {msg.createdFabricCard.image && (
+                            {resolvedFabricCard.image && (
                               <div className="w-10 h-10 rounded border border-border overflow-hidden bg-muted shrink-0">
-                                <img src={msg.createdFabricCard.image} alt="" className="w-full h-full object-cover" />
+                                <img src={resolvedFabricCard.image} alt="" className="w-full h-full object-cover" />
                               </div>
                             )}
                             <div className="truncate">
@@ -1480,7 +1491,7 @@ export default function AgentChat() {
                                 </span>
                               </div>
                               <h4 className="text-xs font-semibold mt-1 text-foreground truncate max-w-[120px] lg:max-w-[150px]">
-                                {msg.createdFabricCard.name}
+                                {resolvedFabricCard.name}
                               </h4>
                             </div>
                           </div>
@@ -1499,12 +1510,12 @@ export default function AgentChat() {
                     })()
                   )}
 
-                  {!msg.loadingStatus?.includes('subagent') && !msg.loadingStatus?.includes('waiting_') && msg.createdStyleDna && (
+                  {!msg.loadingStatus?.includes('subagent') && !msg.loadingStatus?.includes('waiting_') && resolvedStyleDna && (
                     (() => {
-                      const isDnaActive = activeStyleDnaId === msg.createdStyleDna.id;
+                      const isDnaActive = activeStyleDnaId === resolvedStyleDna.id;
                       return (
                         <div 
-                          onClick={() => msg.createdStyleDna && setActiveStyleDnaId(msg.createdStyleDna.id)}
+                          onClick={() => setActiveStyleDnaId(isDnaActive ? null : resolvedStyleDna.id)}
                           className={`cursor-pointer rounded-lg border p-2 flex items-center justify-between transition-all duration-200 ${
                             isDnaActive 
                               ? 'bg-primary/5 border-primary/30 shadow-sm' 
@@ -1518,7 +1529,7 @@ export default function AgentChat() {
                               </span>
                             </div>
                             <h4 className="text-xs font-semibold mt-1 text-foreground truncate max-w-[120px] lg:max-w-[150px]">
-                              {msg.createdStyleDna.name}
+                              {resolvedStyleDna.name}
                             </h4>
                           </div>
                           <Button 

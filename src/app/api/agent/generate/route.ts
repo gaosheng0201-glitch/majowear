@@ -142,7 +142,7 @@ INSTRUCTIONS & CRITICAL RULES:
 5. DESIGNER DECISION PURPOSE: The purpose of raising a conflict is to respect the designer's creative intent when a design trade-off or suitability conflict is detected, letting them make a deliberate choice.
 6. If "hasConflict" is true:
    - Identify "conflictType" ("fabric", "style_dna").
-   - Generate a brief, natural, professional question in the designer's own tone (under 25 characters) pointing out the suitability conflict or design trade-off and asking for confirmation. Do NOT list the options or alternatives in the question text. Match the language of the user's prompt (e.g., write in Chinese if prompt is in Chinese, English if in English).
+   - Generate a brief, natural, professional question in the designer's own tone (under 50 characters) pointing out the suitability conflict or design trade-off and asking for confirmation. Do NOT list the options or alternatives in the question text. Match the language of the user's prompt (e.g., write in Chinese if prompt is in Chinese, English if in English).
    - Generate 3-5 dynamic options. For each option, set both "id" and "value" to the same string.
    - The options list must consist of:
      a) Option to retain the active preset (value and id set to the UUID of the active card, label expressing retention of the active card).
@@ -295,8 +295,11 @@ export async function POST(request: Request) {
       agentModel = 'auto',
       agentStyle = 'default',
       imageResolution = '1024x1024',
-      conflictResolved = false
+      conflictResolved = false,
+      agentMessageId
     } = body;
+
+    const validAgentMsgId = (agentMessageId && isUuid(agentMessageId)) ? agentMessageId : undefined;
 
     if (!userPrompt) {
       return NextResponse.json({ error: 'User prompt is required' }, { status: 400 });
@@ -464,6 +467,7 @@ export async function POST(request: Request) {
 
           // Save agent's conflict message to chat_messages DB
           await supabase.from('chat_messages').insert({
+            ...(validAgentMsgId ? { id: validAgentMsgId } : {}),
             project_id: projectId || null,
             user_id: user.id,
             role: 'agent',
@@ -934,6 +938,7 @@ Output only the category name ('DEEP_THINK', 'TOOL' or 'SEARCH') without any oth
           replyText = `我已为您生成了 "${garmentCard.title}" 的设计款式卡。以下是设计原理：\n\n${garmentCard.design_rationale}`;
 
           await supabase.from('chat_messages').insert({
+            ...(validAgentMsgId ? { id: validAgentMsgId } : {}),
             project_id: projectId || null,
             user_id: user.id,
             role: 'agent',
@@ -952,25 +957,29 @@ Output only the category name ('DEEP_THINK', 'TOOL' or 'SEARCH') without any oth
           onStatus('executing_tool:create_style_dna', 'style');
           const args = call.args as any;
           
-          const { data: styleDna, error: styleError } = await supabase
-            .from('style_dnas')
-            .insert({
-              user_id: user.id,
-              project_id: projectId || null,
-              name: args.name,
-              reference_images: imageUrls || [],
-              keywords: args.keywords || [],
-              colors: args.colors || [],
-              silhouettes: args.silhouettes || [],
-              materials: args.materials || [],
-              details: args.details || [],
-              avoid: args.avoid || []
-            })
-            .select()
-            .single();
+          let styleDna = createdStyleDna;
+          if (!styleDna) {
+            const { data: newDna, error: styleError } = await supabase
+              .from('style_dnas')
+              .insert({
+                user_id: user.id,
+                project_id: projectId || null,
+                name: args.name,
+                reference_images: imageUrls || [],
+                keywords: args.keywords || [],
+                colors: args.colors || [],
+                silhouettes: args.silhouettes || [],
+                materials: args.materials || [],
+                details: args.details || [],
+                avoid: args.avoid || []
+              })
+              .select()
+              .single();
 
-          if (styleError) {
-            throw styleError;
+            if (styleError) {
+              throw styleError;
+            }
+            styleDna = newDna;
           }
 
           onStatus('saving_style_dna', 'style');
@@ -979,6 +988,7 @@ Output only the category name ('DEEP_THINK', 'TOOL' or 'SEARCH') without any oth
           replyText = `我已为您成功录入风格基因预设："${createdStyleDna.name}"。\n\n**关键词**: ${createdStyleDna.keywords.join(', ')}\n**色彩**: ${createdStyleDna.colors.join(', ')}\n**廓形**: ${createdStyleDna.silhouettes.join(', ')}`;
 
           await supabase.from('chat_messages').insert({
+            ...(validAgentMsgId ? { id: validAgentMsgId } : {}),
             project_id: projectId || null,
             user_id: user.id,
             role: 'agent',
@@ -994,27 +1004,31 @@ Output only the category name ('DEEP_THINK', 'TOOL' or 'SEARCH') without any oth
           onStatus('executing_tool:create_fabric_card', 'fabric');
           const args = call.args as any;
 
-          const { data: fabricCard, error: fabricError } = await supabase
-            .from('fabric_cards')
-            .insert({
-              user_id: user.id,
-              project_id: projectId || null,
-              name: args.name,
-              image: imageUrls && imageUrls.length > 0 ? imageUrls[0] : null,
-              composition: args.composition,
-              weight_gsm: args.weight_gsm,
-              texture: args.texture,
-              drape: args.drape,
-              stretch: args.stretch,
-              sheen: args.sheen,
-              transparency: args.transparency,
-              prompt_description: args.prompt_description
-            })
-            .select()
-            .single();
+          let fabricCard = createdFabricCard;
+          if (!fabricCard) {
+            const { data: newFabric, error: fabricError } = await supabase
+              .from('fabric_cards')
+              .insert({
+                user_id: user.id,
+                project_id: projectId || null,
+                name: args.name,
+                image: imageUrls && imageUrls.length > 0 ? imageUrls[0] : null,
+                composition: args.composition,
+                weight_gsm: args.weight_gsm,
+                texture: args.texture,
+                drape: args.drape,
+                stretch: args.stretch,
+                sheen: args.sheen,
+                transparency: args.transparency,
+                prompt_description: args.prompt_description
+              })
+              .select()
+              .single();
 
-          if (fabricError) {
-            throw fabricError;
+            if (fabricError) {
+              throw fabricError;
+            }
+            fabricCard = newFabric;
           }
 
           onStatus('saving_fabric_card', 'fabric');
@@ -1023,6 +1037,7 @@ Output only the category name ('DEEP_THINK', 'TOOL' or 'SEARCH') without any oth
           replyText = `我已为您成功录入面料样卡预设："${createdFabricCard.name}"。\n\n**成分**: ${createdFabricCard.composition}\n**厚度/克重**: ${createdFabricCard.weight_gsm ? `${createdFabricCard.weight_gsm} GSM` : '未指定'}\n**纹理**: ${createdFabricCard.texture}\n**生图描述**: ${createdFabricCard.prompt_description}`;
 
           await supabase.from('chat_messages').insert({
+            ...(validAgentMsgId ? { id: validAgentMsgId } : {}),
             project_id: projectId || null,
             user_id: user.id,
             role: 'agent',
@@ -1039,6 +1054,7 @@ Output only the category name ('DEEP_THINK', 'TOOL' or 'SEARCH') without any oth
         replyText = geminiResponse.text || '';
 
         await supabase.from('chat_messages').insert({
+          ...(validAgentMsgId ? { id: validAgentMsgId } : {}),
           project_id: projectId || null,
           user_id: user.id,
           role: 'agent',

@@ -175,11 +175,20 @@ export const useStudioStore = create<StudioState>((set) => ({
   addProject: (project) => set((state) => ({ projects: [project, ...state.projects] })),
   setActiveProject: (activeProject) => set({ activeProject }),
   setStyleDnas: (styleDnas) => set({ styleDnas }),
-  addStyleDna: (styleDna) => set((state) => ({ styleDnas: [styleDna, ...state.styleDnas] })),
+  addStyleDna: (styleDna) => set((state) => {
+    if (state.styleDnas.some(s => s.id === styleDna.id)) return {};
+    return { styleDnas: [styleDna, ...state.styleDnas] };
+  }),
   setFabricCards: (fabricCards) => set({ fabricCards }),
-  addFabricCard: (fabricCard) => set((state) => ({ fabricCards: [fabricCard, ...state.fabricCards] })),
+  addFabricCard: (fabricCard) => set((state) => {
+    if (state.fabricCards.some(f => f.id === fabricCard.id)) return {};
+    return { fabricCards: [fabricCard, ...state.fabricCards] };
+  }),
   setGarmentCards: (garmentCards) => set({ garmentCards }),
-  addGarmentCard: (garmentCard) => set((state) => ({ garmentCards: [garmentCard, ...state.garmentCards] })),
+  addGarmentCard: (garmentCard) => set((state) => {
+    if (state.garmentCards.some(g => g.id === garmentCard.id)) return {};
+    return { garmentCards: [garmentCard, ...state.garmentCards] };
+  }),
   setActiveStyleDnaId: (activeStyleDnaId) => set({ activeStyleDnaId }),
   setActiveFabricCardId: (activeFabricCardId) => set({ activeFabricCardId }),
   setActiveGarment: (activeGarment) => set((state) => ({

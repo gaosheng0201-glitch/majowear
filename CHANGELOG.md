@@ -2,6 +2,28 @@
 
 All notable changes and implementations for the AI Personal Fashion Studio project are documented in this file.
 
+## [1.6.2] - 2026-06-17
+
+### Added
+- **Client UUID Synchronization**
+  - Generates client-side message UUIDs via `crypto.randomUUID()` in both `handleSendPrompt` and `handleSelectConflictOption` to replace temporary local timestamps.
+  - Passes `agentMessageId` payload to backend generate API, forcing the database row insertion to use the same UUID.
+  - Ensures perfect alignment of client-side message IDs with database IDs, allowing conflict cards to successfully update their `resolved` status in Supabase.
+- **Dynamic Derived Data (Render-Time Lookup)**
+  - Removes `garmentCards`, `styleDnas`, and `fabricCards` from the loading history `useEffect` dependency array in `AgentChat.tsx`.
+  - Refactors the JSX message rendering loop to perform dynamic, reactively updated lookups of cards by ID from the Zustand store.
+  - Completely resolves the database reload loop that was wiping active streaming messages, ensuring smooth and continuous collaboration between the main agent and sub-agents.
+
+### Changed
+- **Designer Conflict Question Character Limit**
+  - Adjusts character limit constraint from 25 to 50 characters in `route.ts` to allow more natural and expressive descriptions of suitability trade-offs.
+
+### Fixed
+- **Double Card Rendering in Streaming Bubble**
+  - Adds `!msg.loading` condition to the top-level card container in the agent message render block. This ensures that created fabric/style cards are only rendered inside the dedicated sub-agent loading panel during the streaming process, preventing cards from showing up twice inside the bubble.
+- **Zustand Store Deduplication on Asset Creation**
+  - Deduplicates incoming cards in `addFabricCard`, `addStyleDna`, and `addGarmentCard` store actions. Prevents cards from appearing twice in the sidebar and workspace libraries when they are added both during stream chunk arrival and stream resolution.
+
 ## [1.6.1] - 2026-06-17
 
 ### Added
