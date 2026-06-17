@@ -9,6 +9,10 @@ All notable changes and implementations for the AI Personal Fashion Studio proje
   - Implements dynamic language detection (`/[\u4e00-\u9fa5]/`) on the user prompt to determine the language preference.
   - Adapts `generate_garment_design`, `create_style_dna`, and `create_fabric_card` tool outputs to reply dynamically in English or Chinese.
 
+### Changed
+- **Balanced Design Rationale Prompt Constraints**
+  - Adjusts system prompt guidelines and `design_rationale` tool parameter descriptions in `route.ts` to instruct the LLM to balance design explanations (cuts, silhouettes, collar/sleeve styles, visual highlights) with active fabric properties, ensuring the rationale doesn't over-index exclusively on fabric descriptions.
+
 ### Fixed
 - **Conflict Resolution Card Duplication on Existing Choice**
   - Resolves a bug where selecting "使用已有" (use existing) in a conflict card would still trigger the main agent to create a new card.
