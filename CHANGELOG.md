@@ -10,6 +10,10 @@ All notable changes and implementations for the AI Personal Fashion Studio proje
   - Implements click-to-deactivate toggle interactions for Garment Cards (both root garments and variants) in `AssetSidebar.tsx`. Clicking on the active garment card toggles `activeGarment` back to `null` (unselected), resetting the canvas to its clean ready-to-design checklist state.
   - Implements identical click-to-deactivate toggles for Fabric, DNA, and Garment cards/buttons inside the chat history bubble panels, message inline Pills, and card view buttons in `AgentChat.tsx`.
 
+### Changed
+- **Input Placeholder Localization Update**
+  - Replaces "生成 3 件轻便夹克..." (Generate 3 lightweight jackets...) placeholder text with "设计一款工装风防风夹克..." (Design a utility windbreaker jacket...) in both Chinese and English translations (`translations.ts`). This avoids any ambiguity, as the system designs one garment at a time.
+
 ### Fixed
 - **Double Card Database Insertion (Idempotency Protection)**
   - Integrates state reuse verification checks in `create_fabric_card` and `create_style_dna` tool handlers in the backend `route.ts`.
