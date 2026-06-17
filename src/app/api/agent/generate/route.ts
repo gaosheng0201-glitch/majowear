@@ -305,6 +305,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'User prompt is required' }, { status: 400 });
     }
 
+    const isChinese = /[\u4e00-\u9fa5]/.test(userPrompt);
+
     const runWorkflow = async (
       onStatus: (status: string, target?: string) => void,
       onResult: (data: any) => void,
@@ -935,7 +937,9 @@ Output only the category name ('DEEP_THINK', 'TOOL' or 'SEARCH') without any oth
           }
 
           garmentCard = insertedGarment;
-          replyText = `我已为您生成了 "${garmentCard.title}" 的设计款式卡。以下是设计原理：\n\n${garmentCard.design_rationale}`;
+          replyText = isChinese
+            ? `我已为您生成了 "${garmentCard.title}" 的设计款式卡。以下是设计原理：\n\n${garmentCard.design_rationale}`
+            : `I have generated the design card for "${garmentCard.title}". Here is the design rationale:\n\n${garmentCard.design_rationale}`;
 
           await supabase.from('chat_messages').insert({
             ...(validAgentMsgId ? { id: validAgentMsgId } : {}),
@@ -961,7 +965,9 @@ Output only the category name ('DEEP_THINK', 'TOOL' or 'SEARCH') without any oth
           if (!styleDna) {
             if (conflictResolved && styleDnaId && isUuid(styleDnaId) && styleDnaData) {
               styleDna = styleDnaData;
-              replyText = `已根据您的选择，激活并使用已有的风格基因："${styleDna.name}"。`;
+              replyText = isChinese
+                ? `已根据您的选择，激活并使用已有的风格基因："${styleDna.name}"。`
+                : `Based on your selection, active Style DNA has been set to the existing preset: "${styleDna.name}".`;
             } else {
               const { data: newDna, error: styleError } = await supabase
                 .from('style_dnas')
@@ -984,10 +990,14 @@ Output only the category name ('DEEP_THINK', 'TOOL' or 'SEARCH') without any oth
                 throw styleError;
               }
               styleDna = newDna;
-              replyText = `我已为您成功录入风格基因预设："${styleDna.name}"。\n\n**关键词**: ${styleDna.keywords.join(', ')}\n**色彩**: ${styleDna.colors.join(', ')}\n**廓形**: ${styleDna.silhouettes.join(', ')}`;
+              replyText = isChinese
+                ? `我已为您成功录入风格基因预设："${styleDna.name}"。\n\n**关键词**: ${styleDna.keywords.join(', ')}\n**色彩**: ${styleDna.colors.join(', ')}\n**廓形**: ${styleDna.silhouettes.join(', ')}`
+                : `I have successfully recorded the Style DNA preset: "${styleDna.name}".\n\n**Keywords**: ${styleDna.keywords.join(', ')}\n**Colors**: ${styleDna.colors.join(', ')}\n**Silhouettes**: ${styleDna.silhouettes.join(', ')}`;
             }
           } else {
-            replyText = `我已为您成功录入风格基因预设："${styleDna.name}"。\n\n**关键词**: ${styleDna.keywords.join(', ')}\n**色彩**: ${styleDna.colors.join(', ')}\n**廓形**: ${styleDna.silhouettes.join(', ')}`;
+            replyText = isChinese
+              ? `我已为您成功录入风格基因预设："${styleDna.name}"。\n\n**关键词**: ${styleDna.keywords.join(', ')}\n**色彩**: ${styleDna.colors.join(', ')}\n**廓形**: ${styleDna.silhouettes.join(', ')}`
+              : `I have successfully recorded the Style DNA preset: "${styleDna.name}".\n\n**Keywords**: ${styleDna.keywords.join(', ')}\n**Colors**: ${styleDna.colors.join(', ')}\n**Silhouettes**: ${styleDna.silhouettes.join(', ')}`;
           }
 
           onStatus('saving_style_dna', 'style');
@@ -1015,7 +1025,9 @@ Output only the category name ('DEEP_THINK', 'TOOL' or 'SEARCH') without any oth
           if (!fabricCard) {
             if (conflictResolved && fabricCardId && isUuid(fabricCardId) && fabricCardData) {
               fabricCard = fabricCardData;
-              replyText = `已根据您的选择，激活并使用已有的面料样卡："${fabricCard.name}"。`;
+              replyText = isChinese
+                ? `已根据您的选择，激活并使用已有的面料样卡："${fabricCard.name}"。`
+                : `Based on your selection, active Fabric Card has been set to the existing preset: "${fabricCard.name}".`;
             } else {
               const { data: newFabric, error: fabricError } = await supabase
                 .from('fabric_cards')
@@ -1040,10 +1052,14 @@ Output only the category name ('DEEP_THINK', 'TOOL' or 'SEARCH') without any oth
                 throw fabricError;
               }
               fabricCard = newFabric;
-              replyText = `我已为您成功录入面料样卡预设："${fabricCard.name}"。\n\n**成分**: ${fabricCard.composition}\n**厚度/克重**: ${fabricCard.weight_gsm ? `${fabricCard.weight_gsm} GSM` : '未指定'}\n**纹理**: ${fabricCard.texture}\n**生图描述**: ${fabricCard.prompt_description}`;
+              replyText = isChinese
+                ? `我已为您成功录入面料样卡预设："${fabricCard.name}"。\n\n**成分**: ${fabricCard.composition}\n**厚度/克重**: ${fabricCard.weight_gsm ? `${fabricCard.weight_gsm} GSM` : '未指定'}\n**纹理**: ${fabricCard.texture}\n**生图描述**: ${fabricCard.prompt_description}`
+                : `I have successfully recorded the Fabric Card preset: "${fabricCard.name}".\n\n**Composition**: ${fabricCard.composition}\n**Weight**: ${fabricCard.weight_gsm ? `${fabricCard.weight_gsm} GSM` : 'Not specified'}\n**Texture**: ${fabricCard.texture}\n**Rendering Prompt**: ${fabricCard.prompt_description}`;
             }
           } else {
-            replyText = `我已为您成功录入面料样卡预设："${fabricCard.name}"。\n\n**成分**: ${fabricCard.composition}\n**厚度/克重**: ${fabricCard.weight_gsm ? `${fabricCard.weight_gsm} GSM` : '未指定'}\n**纹理**: ${fabricCard.texture}\n**生图描述**: ${fabricCard.prompt_description}`;
+            replyText = isChinese
+              ? `我已为您成功录入面料样卡预设："${fabricCard.name}"。\n\n**成分**: ${fabricCard.composition}\n**厚度/克重**: ${fabricCard.weight_gsm ? `${fabricCard.weight_gsm} GSM` : '未指定'}\n**纹理**: ${fabricCard.texture}\n**生图描述**: ${fabricCard.prompt_description}`
+              : `I have successfully recorded the Fabric Card preset: "${fabricCard.name}".\n\n**Composition**: ${fabricCard.composition}\n**Weight**: ${fabricCard.weight_gsm ? `${fabricCard.weight_gsm} GSM` : 'Not specified'}\n**Texture**: ${fabricCard.texture}\n**Rendering Prompt**: ${fabricCard.prompt_description}`;
           }
 
           onStatus('saving_fabric_card', 'fabric');
