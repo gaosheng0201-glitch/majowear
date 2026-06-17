@@ -2,6 +2,20 @@
 
 All notable changes and implementations for the AI Personal Fashion Studio project are documented in this file.
 
+## [1.6.3] - 2026-06-17
+
+### Added
+- **Frontend Asset De-selection (Togglable Deselect)**
+  - Implements click-to-deactivate toggle interactions for Style DNAs and Fabric Cards in `AssetSidebar.tsx`. Clicking on the currently active card toggles its state back to `null` (deactivated), accompanied by immediate UI checkbox/Check status synchronization.
+  - Implements click-to-deactivate toggle interactions for Garment Cards (both root garments and variants) in `AssetSidebar.tsx`. Clicking on the active garment card toggles `activeGarment` back to `null` (unselected), resetting the canvas to its clean ready-to-design checklist state.
+  - Implements identical click-to-deactivate toggles for Fabric, DNA, and Garment cards/buttons inside the chat history bubble panels, message inline Pills, and card view buttons in `AgentChat.tsx`.
+
+### Fixed
+- **Double Card Database Insertion (Idempotency Protection)**
+  - Integrates state reuse verification checks in `create_fabric_card` and `create_style_dna` tool handlers in the backend `route.ts`.
+  - Reuses the existing `createdFabricCard` or `createdStyleDna` generated in the pre-generation pipeline Stage 1.5, skipping duplicate database `INSERT` commands if the card was already created by the sub-agent.
+  - Guarantees that exactly one card is added to the project libraries for any generation workflow path, while preserving the main agent's full ability to call creation tools during non-conflicting direct prompts.
+
 ## [1.6.2] - 2026-06-17
 
 ### Added
