@@ -55,6 +55,12 @@ export default function GarmentCanvas() {
   const t = translations[language]
 
   // Local state
+  const [activeAngle, setActiveAngle] = useState<'front' | 'side' | 'back'>('front')
+
+  useEffect(() => {
+    setActiveAngle('front')
+  }, [activeGarment?.id])
+
   const [copySuccess, setCopySuccess] = useState(false)
   const [quickPrompt, setQuickPrompt] = useState("")
   const [variantLoading, setVariantLoading] = useState(false)
@@ -382,6 +388,9 @@ ${activeGarment.prompt}
   }
 
   const review = activeGarment.schema?.review
+  const garmentDisplayMode = activeGarment.schema?.displayMode
+  const isMultiView = !!garmentDisplayMode
+  const isThreeView = garmentDisplayMode === 'on_body'
 
   return (
     <div className="relative w-full max-w-5xl animate-in fade-in-30 duration-300">
@@ -389,25 +398,92 @@ ${activeGarment.prompt}
         {/* Left Column: Image and Version history */}
         <div className="lg:w-1/2 bg-muted relative flex flex-col min-h-[400px] lg:min-h-0">
           <GarmentReview />
-          <div className="flex-1 relative flex items-center justify-center bg-zinc-900/10">
+          <div className="flex-1 relative flex items-center justify-center p-4 overflow-hidden">
           {activeGarment.images?.[0] ? (
-            <>
+            <div className="relative aspect-square w-full max-w-full overflow-hidden rounded-2xl border border-border/40 bg-zinc-950/10 shadow-lg flex items-center justify-center">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img 
                 src={activeGarment.images[0]} 
                 alt={activeGarment.title} 
-                className="object-contain w-full h-full max-h-[50vh] lg:max-h-full p-2 animate-in fade-in duration-300"
+                className={isMultiView 
+                  ? "absolute top-0 left-0 h-full max-w-none animate-in fade-in duration-300" 
+                  : "object-contain w-full h-full p-6 animate-in fade-in duration-300"
+                }
+                style={isMultiView ? (
+                  isThreeView ? {
+                    width: '400%',
+                    height: '100%',
+                    maxWidth: 'none',
+                    transform: `translateX(${
+                      activeAngle === 'front' ? '-12.5%' :
+                      activeAngle === 'side' ? '-37.5%' :
+                      '-62.5%'
+                    })`,
+                    transition: 'transform 0.4s cubic-bezier(0.25, 1, 0.5, 1)'
+                  } : {
+                    width: '233.333%',
+                    height: '100%',
+                    maxWidth: 'none',
+                    transform: `translateX(${
+                      activeAngle === 'front' ? '-3.57%' :
+                      '-53.57%'
+                    })`,
+                    transition: 'transform 0.4s cubic-bezier(0.25, 1, 0.5, 1)'
+                  }
+                ) : undefined}
               />
+              
+              {/* Angle Selector Tabs overlay */}
+              {isMultiView && (
+                <div className="absolute bottom-4 left-4 flex bg-background/85 hover:bg-background text-foreground border border-border/60 backdrop-blur-md shadow-md rounded-xl p-1 z-10 transition-all gap-1">
+                  <button
+                    type="button"
+                    onClick={() => setActiveAngle('front')}
+                    className={`text-xs px-2.5 py-1 rounded-lg font-medium transition-all cursor-pointer ${
+                      activeAngle === 'front' 
+                        ? 'bg-primary text-primary-foreground shadow-sm' 
+                        : 'text-muted-foreground hover:text-foreground hover:bg-muted'
+                    }`}
+                  >
+                    {language === 'zh' ? '正面' : 'Front'}
+                  </button>
+                  {isThreeView && (
+                    <button
+                      type="button"
+                      onClick={() => setActiveAngle('side')}
+                      className={`text-xs px-2.5 py-1 rounded-lg font-medium transition-all cursor-pointer ${
+                        activeAngle === 'side' 
+                          ? 'bg-primary text-primary-foreground shadow-sm' 
+                          : 'text-muted-foreground hover:text-foreground hover:bg-muted'
+                      }`}
+                    >
+                      {language === 'zh' ? '侧面' : 'Side'}
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setActiveAngle('back')}
+                    className={`text-xs px-2.5 py-1 rounded-lg font-medium transition-all cursor-pointer ${
+                      activeAngle === 'back' 
+                        ? 'bg-primary text-primary-foreground shadow-sm' 
+                        : 'text-muted-foreground hover:text-foreground hover:bg-muted'
+                    }`}
+                  >
+                    {language === 'zh' ? '反面' : 'Back'}
+                  </button>
+                </div>
+              )}
+
               <button 
                 onClick={() => setIsPreviewOpen(true)}
-                className="absolute bottom-4 right-4 bg-background/80 hover:bg-background text-foreground p-2 rounded-lg border border-border backdrop-blur shadow-md hover:scale-105 transition-all cursor-pointer"
+                className="absolute bottom-4 right-4 bg-background/85 hover:bg-background text-foreground p-2 rounded-lg border border-border/60 backdrop-blur-md shadow-md hover:scale-105 transition-all cursor-pointer z-10"
                 title={language === 'zh' ? '放大查看' : 'Zoom view'}
               >
                 <Maximize2 className="w-4 h-4" />
               </button>
-            </>
+            </div>
           ) : (
-            <div className="text-center text-muted-foreground p-8">
+            <div className="text-center text-muted-foreground p-8 flex flex-col items-center justify-center h-full">
               <ImageIcon className="w-12 h-12 mx-auto mb-3 opacity-40" />
               <p>Image not generated properly</p>
             </div>
@@ -695,22 +771,107 @@ ${activeGarment.prompt}
 
         {/* Interactive Image Container */}
         <div 
-          className="w-full h-full flex items-center justify-center overflow-hidden relative"
+          className="flex-1 w-full h-full flex items-center justify-center overflow-hidden relative p-4"
           onMouseMove={handleMouseMove}
         >
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img 
-            src={activeGarment.images[0]} 
-            alt={activeGarment.title} 
-            onMouseDown={handleMouseDown}
-            style={{
-              transform: `translate(${panOffset.x}px, ${panOffset.y}px) scale(${zoomScale})`,
-              transition: isDragging ? 'none' : 'transform 0.15s ease-out',
-              cursor: zoomScale > 1 ? (isDragging ? 'grabbing' : 'grab') : 'default'
-            }}
-            className="max-w-[90%] max-h-[85%] object-contain select-none shadow-2xl rounded"
-            draggable={false}
-          />
+          <div className="relative aspect-square w-full max-w-[90vw] max-h-[75vh] md:max-w-[75vh] overflow-hidden rounded-2xl border border-white/10 bg-zinc-950/40 shadow-2xl flex items-center justify-center select-none">
+            
+            {/* Zoom & Pan Container */}
+            <div 
+              style={{
+                transform: `translate(${panOffset.x}px, ${panOffset.y}px) scale(${zoomScale})`,
+                transition: isDragging ? 'none' : 'transform 0.15s ease-out',
+                cursor: zoomScale > 1 ? (isDragging ? 'grabbing' : 'grab') : 'default',
+                transformOrigin: 'center center'
+              }}
+              onMouseDown={handleMouseDown}
+              className="w-full h-full relative flex items-center justify-center select-none"
+            >
+              {isMultiView ? (
+                /* Crop Container */
+                <div className="relative w-full h-full overflow-hidden select-none pointer-events-none">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img 
+                    src={activeGarment.images[0]} 
+                    alt={activeGarment.title} 
+                    style={{
+                      width: isThreeView ? '400%' : '233.333%',
+                      height: '100%',
+                      maxWidth: 'none',
+                      transform: `translateX(${
+                        isThreeView 
+                          ? (activeAngle === 'front' ? '-12.5%' : activeAngle === 'side' ? '-37.5%' : '-62.5%')
+                          : (activeAngle === 'front' ? '-3.57%' : '-53.57%')
+                      })`
+                    }}
+                    className="absolute top-0 left-0 h-full max-w-none select-none pointer-events-none"
+                    draggable={false}
+                  />
+                </div>
+              ) : (
+                /* eslint-disable-next-line @next/next/no-img-element */
+                <img 
+                  src={activeGarment.images[0]} 
+                  alt={activeGarment.title} 
+                  className="max-w-[95%] max-h-[95%] object-contain select-none pointer-events-none"
+                  draggable={false}
+                />
+              )}
+            </div>
+
+            {/* Angle Selector Tabs overlay inside zoom view */}
+            {isMultiView && (
+              <div className="absolute bottom-4 left-4 flex bg-zinc-950/80 hover:bg-zinc-950 text-white border border-white/10 backdrop-blur shadow-md rounded-xl p-1 z-10 transition-all gap-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveAngle('front')
+                    setZoomScale(1)
+                    setPanOffset({ x: 0, y: 0 })
+                  }}
+                  className={`text-xs px-2.5 py-1 rounded-lg font-medium transition-all cursor-pointer ${
+                    activeAngle === 'front' 
+                      ? 'bg-indigo-600 text-white shadow-sm' 
+                      : 'text-zinc-400 hover:text-white hover:bg-white/10'
+                  }`}
+                >
+                  {language === 'zh' ? '正面' : 'Front'}
+                </button>
+                {isThreeView && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setActiveAngle('side')
+                      setZoomScale(1)
+                      setPanOffset({ x: 0, y: 0 })
+                    }}
+                    className={`text-xs px-2.5 py-1 rounded-lg font-medium transition-all cursor-pointer ${
+                      activeAngle === 'side' 
+                        ? 'bg-indigo-600 text-white shadow-sm' 
+                        : 'text-zinc-400 hover:text-white hover:bg-white/10'
+                    }`}
+                  >
+                    {language === 'zh' ? '侧面' : 'Side'}
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveAngle('back')
+                    setZoomScale(1)
+                    setPanOffset({ x: 0, y: 0 })
+                  }}
+                  className={`text-xs px-2.5 py-1 rounded-lg font-medium transition-all cursor-pointer ${
+                    activeAngle === 'back' 
+                      ? 'bg-indigo-600 text-white shadow-sm' 
+                      : 'text-zinc-400 hover:text-white hover:bg-white/10'
+                  }`}
+                >
+                  {language === 'zh' ? '反面' : 'Back'}
+                </button>
+              </div>
+            )}
+          </div>
         </div>
         
         {/* Help tip at the bottom */}

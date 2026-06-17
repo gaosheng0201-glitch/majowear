@@ -11,7 +11,9 @@ import {
   Shirt,
   Paperclip,
   X,
-  Settings
+  Settings,
+  ChevronRight,
+  CheckCircle2
 } from "lucide-react"
 import { useStudioStore, ChatMessage, GarmentCard } from "@/lib/store"
 import { translations } from "@/lib/translations"
@@ -482,6 +484,16 @@ export default function AgentChat() {
               ? fabricCards.find(f => f.id === createdFabricCardId)
               : undefined
 
+            const conflictResolution = msg.grounding_metadata?.type === 'conflict_resolution'
+              ? {
+                  conflictType: msg.grounding_metadata.conflictType,
+                  question: msg.grounding_metadata.question,
+                  resolved: msg.grounding_metadata.resolved === true,
+                  selectedOptionLabel: msg.grounding_metadata.selectedOptionLabel,
+                  options: msg.grounding_metadata.options || []
+                }
+              : undefined
+
             return {
               id: msg.id,
               role: msg.role as 'agent' | 'user',
@@ -491,7 +503,8 @@ export default function AgentChat() {
               createdStyleDna: sDna,
               createdFabricCard: fCard,
               image_urls: msg.image_urls || [],
-              grounding_metadata: msg.grounding_metadata || undefined
+              grounding_metadata: msg.grounding_metadata || undefined,
+              conflictResolution
             }
           })
           setMessages(chatMsgs)
@@ -514,6 +527,128 @@ export default function AgentChat() {
       loadChatHistory()
     }
   }, [projectId, supabase, setMessages, language, garmentCards, styleDnas, fabricCards])
+
+  // Helper to read and process chunk stream from backend
+  const readStream = async (response: Response, agentMsgId: string) => {
+    const reader = response.body?.getReader()
+    if (!reader) {
+      throw new Error("No response body stream.")
+    }
+
+    const decoder = new TextDecoder("utf-8")
+    let buffer = ""
+    let finalResult: any = null
+
+    while (true) {
+      const { value, done } = await reader.read()
+      if (done) break
+
+      buffer += decoder.decode(value, { stream: true })
+      const lines = buffer.split("\n")
+      buffer = lines.pop() || ""
+
+      for (const line of lines) {
+        if (!line.trim()) continue
+        try {
+          const chunk = JSON.parse(line)
+          if (chunk.type === 'status') {
+            const currentMessages = useStudioStore.getState().messages
+            const updated = currentMessages.map(m => {
+              if (m.id === agentMsgId) {
+                return {
+                  ...m,
+                  loadingStatus: chunk.status,
+                  loadingTarget: chunk.target || m.loadingTarget
+                }
+              }
+              return m
+            })
+            setMessages(updated)
+          } else if (chunk.type === 'error') {
+            throw new Error(chunk.message || "Backend streamed error")
+          } else if (chunk.type === 'result') {
+            finalResult = chunk.data
+          }
+        } catch (e: any) {
+          console.error("Failed to parse stream chunk:", e, "Line:", line)
+        }
+      }
+    }
+
+    if (!finalResult) {
+      throw new Error("No result received from stream.")
+    }
+
+    const resData = finalResult
+    const currentMessages = useStudioStore.getState().messages
+    const updated = [...currentMessages]
+    const index = updated.findIndex(m => m.id === agentMsgId)
+
+    if (index !== -1) {
+      if (resData.type === 'conflict_resolution') {
+        updated[index] = {
+          id: agentMsgId,
+          role: 'agent',
+          text: resData.question,
+          conflictResolution: {
+            conflictType: resData.conflictType,
+            question: resData.question,
+            resolved: false,
+            options: resData.options
+          },
+          loading: false
+        }
+      } else if (resData.isToolCalled) {
+        if (resData.garmentCard) {
+          const gCard = resData.garmentCard as GarmentCard
+          addGarmentCard(gCard)
+          setActiveGarment(gCard)
+          
+          updated[index] = {
+            id: agentMsgId,
+            role: 'agent',
+            text: resData.replyText,
+            garmentCard: gCard,
+            garment_card_id: gCard.id,
+            loading: false
+          }
+        } else if (resData.createdStyleDna) {
+          const sDna = resData.createdStyleDna
+          addStyleDna(sDna)
+          setActiveStyleDnaId(sDna.id)
+
+          updated[index] = {
+            id: agentMsgId,
+            role: 'agent',
+            text: resData.replyText,
+            createdStyleDna: sDna,
+            loading: false
+          }
+        } else if (resData.createdFabricCard) {
+          const fCard = resData.createdFabricCard
+          addFabricCard(fCard)
+          setActiveFabricCardId(fCard.id)
+
+          updated[index] = {
+            id: agentMsgId,
+            role: 'agent',
+            text: resData.replyText,
+            createdFabricCard: fCard,
+            loading: false
+          }
+        }
+      } else {
+        updated[index] = {
+          id: agentMsgId,
+          role: 'agent',
+          text: resData.replyText,
+          grounding_metadata: resData.groundingMetadata || undefined,
+          loading: false
+        }
+      }
+    }
+    setMessages(updated)
+  }
 
   // Handle Design Agent Request
   const handleSendPrompt = async (e: React.FormEvent) => {
@@ -565,8 +700,8 @@ export default function AgentChat() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           prompt: promptText,
-          styleDnaId: activeGarment?.style_dna_id || activeStyleDnaId || undefined,
-          fabricCardId: activeGarment?.fabric_card_id || activeFabricCardId || undefined,
+          styleDnaId: activeStyleDnaId || activeGarment?.style_dna_id || undefined,
+          fabricCardId: activeFabricCardId || activeGarment?.fabric_card_id || undefined,
           parentVersionId: activeGarment?.id || undefined,
           referencedGarmentIds,
           projectId,
@@ -584,111 +719,7 @@ export default function AgentChat() {
         throw new Error("Generation request failed.")
       }
 
-      const reader = response.body?.getReader()
-      if (!reader) {
-        throw new Error("No response body stream.")
-      }
-
-      const decoder = new TextDecoder("utf-8")
-      let buffer = ""
-      let finalResult: any = null
-
-      while (true) {
-        const { value, done } = await reader.read()
-        if (done) break
-
-        buffer += decoder.decode(value, { stream: true })
-        const lines = buffer.split("\n")
-        buffer = lines.pop() || ""
-
-        for (const line of lines) {
-          if (!line.trim()) continue
-          try {
-            const chunk = JSON.parse(line)
-            if (chunk.type === 'status') {
-              const currentMessages = useStudioStore.getState().messages
-              const updated = currentMessages.map(m => {
-                if (m.id === agentMsgId) {
-                  return {
-                    ...m,
-                    loadingStatus: chunk.status,
-                    loadingTarget: chunk.target || m.loadingTarget
-                  }
-                }
-                return m
-              })
-              setMessages(updated)
-            } else if (chunk.type === 'error') {
-              throw new Error(chunk.message || "Backend streamed error")
-            } else if (chunk.type === 'result') {
-              finalResult = chunk.data
-            }
-          } catch (e: any) {
-            console.error("Failed to parse stream chunk:", e, "Line:", line)
-          }
-        }
-      }
-
-      if (!finalResult) {
-        throw new Error("No result received from stream.")
-      }
-
-      const resData = finalResult
-      const currentMessages = useStudioStore.getState().messages
-      const updated = [...currentMessages]
-      const index = updated.findIndex(m => m.id === agentMsgId)
-
-      if (index !== -1) {
-        if (resData.isToolCalled) {
-          if (resData.garmentCard) {
-            const gCard = resData.garmentCard as GarmentCard
-            addGarmentCard(gCard)
-            setActiveGarment(gCard)
-            
-            updated[index] = {
-              id: agentMsgId,
-              role: 'agent',
-              text: resData.replyText,
-              garmentCard: gCard,
-              garment_card_id: gCard.id,
-              loading: false
-            }
-          } else if (resData.createdStyleDna) {
-            const sDna = resData.createdStyleDna
-            addStyleDna(sDna)
-            setActiveStyleDnaId(sDna.id)
-
-            updated[index] = {
-              id: agentMsgId,
-              role: 'agent',
-              text: resData.replyText,
-              createdStyleDna: sDna,
-              loading: false
-            }
-          } else if (resData.createdFabricCard) {
-            const fCard = resData.createdFabricCard
-            addFabricCard(fCard)
-            setActiveFabricCardId(fCard.id)
-
-            updated[index] = {
-              id: agentMsgId,
-              role: 'agent',
-              text: resData.replyText,
-              createdFabricCard: fCard,
-              loading: false
-            }
-          }
-        } else {
-          updated[index] = {
-            id: agentMsgId,
-            role: 'agent',
-            text: resData.replyText,
-            grounding_metadata: resData.groundingMetadata || undefined,
-            loading: false
-          }
-        }
-      }
-      setMessages(updated)
+      await readStream(response, agentMsgId)
 
     } catch (err: any) {
       console.warn("Agent generate failed:", err)
@@ -705,6 +736,138 @@ export default function AgentChat() {
         }
       }
       setMessages(updated)
+    } finally {
+      setChatLoading(false)
+    }
+  }
+
+  // Handle click on dynamic conflict card option
+  const handleSelectConflictOption = async (
+    messageId: string, 
+    option: { id: string; label: string; value: string }
+  ) => {
+    const currentMessages = useStudioStore.getState().messages
+    const msg = currentMessages.find(m => m.id === messageId)
+    if (!msg || !msg.conflictResolution) return
+
+    const { conflictType } = msg.conflictResolution
+
+    // 1. If it's custom selection, focus on chat input editor
+    if (option.value === 'custom' || option.id === 'custom') {
+      const editor = editorRef.current
+      if (editor) {
+        editor.focus()
+        // Insert placeholder guidance text
+        editor.innerHTML = language === 'zh' 
+          ? '<b>用手动描述的面料特征：</b>请在这里描述您的要求。' 
+          : '<b>Manual description:</b> Describe your requirement here.'
+      }
+      return
+    }
+
+    // 2. Sync Zustand stores based on selection (updates sidebar checkboxes automatically)
+    if (conflictType === 'fabric') {
+      setActiveFabricCardId(option.value)
+    } else if (conflictType === 'style_dna') {
+      setActiveStyleDnaId(option.value)
+    }
+
+    // 3. Find the predecessor user message to find the original prompt & images
+    const msgIndex = currentMessages.findIndex(m => m.id === messageId)
+    const userMsg = msgIndex > 0 ? currentMessages[msgIndex - 1] : null
+    const originalPrompt = userMsg ? userMsg.text : ''
+    const originalImageUrls = userMsg ? userMsg.image_urls : []
+
+    setChatLoading(true)
+
+    // 4. Update the conflict card to resolved state in DB (resolved: true)
+    try {
+      const resolvedMetadata = {
+        ...msg.grounding_metadata,
+        resolved: true,
+        selectedOptionLabel: option.label
+      }
+
+      await supabase
+        .from('chat_messages')
+        .update({ grounding_metadata: resolvedMetadata })
+        .eq('id', messageId)
+    } catch (dbErr) {
+      console.error('Failed to update conflict message resolution state in DB:', dbErr)
+    }
+
+    // 5. Append new Agent placeholder message and update conflict resolution state locally
+    const newAgentMsgId = Date.now().toString()
+    const updatedMessages = useStudioStore.getState().messages.map(m => {
+      if (m.id === messageId && m.conflictResolution) {
+        return {
+          ...m,
+          conflictResolution: {
+            ...m.conflictResolution,
+            resolved: true,
+            selectedOptionLabel: option.label
+          }
+        }
+      }
+      return m
+    })
+
+    setMessages([
+      ...updatedMessages,
+      {
+        id: newAgentMsgId,
+        role: 'agent',
+        text: language === 'zh'
+          ? `已选择: "${option.label}"。正在重新生成设计，请稍候...`
+          : `Selected: "${option.label}". Resubmitting design request, please wait...`,
+        loading: true
+      }
+    ])
+
+    // 6. Resubmit generate POST request with conflictResolved: true
+    try {
+      const response = await fetch('/api/agent/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          prompt: originalPrompt,
+          styleDnaId: conflictType === 'style_dna' ? option.value : activeStyleDnaId || activeGarment?.style_dna_id || undefined,
+          fabricCardId: conflictType === 'fabric' ? option.value : activeFabricCardId || activeGarment?.fabric_card_id || undefined,
+          parentVersionId: activeGarment?.id || undefined,
+          referencedGarmentIds: [],
+          projectId,
+          displayMode,
+          imageGenModel,
+          imageUrls: originalImageUrls || [],
+          stream: true,
+          conflictResolved: true, // Bypass interceptor!
+          agentModel: activeProject?.agent_model || 'auto',
+          agentStyle: activeProject?.agent_style || 'default',
+          imageResolution: activeProject?.image_resolution || '1024x1024'
+        })
+      })
+
+      if (!response.ok) {
+        throw new Error("Resubmission request failed.")
+      }
+
+      await readStream(response, newAgentMsgId)
+
+    } catch (err: any) {
+      console.error("Agent resubmission failed:", err)
+      const latestMessages = useStudioStore.getState().messages
+      const finalMsgs = latestMessages.map(m => {
+        if (m.id === newAgentMsgId) {
+          return {
+            ...m,
+            error: true,
+            text: `${language === 'zh' ? '设计助手重新提交失败：' : 'Agent resubmission failed: '}${err.message || "An unexpected error occurred."}`,
+            loading: false
+          }
+        }
+        return m
+      })
+      setMessages(finalMsgs)
     } finally {
       setChatLoading(false)
     }
@@ -757,7 +920,38 @@ export default function AgentChat() {
                 {msg.role === 'user' ? (language === 'zh' ? '设计师' : 'Designer') : (language === 'zh' ? '设计 Agent' : 'Agent')}
               </p>
               
-              {msg.role === 'agent' && (msg.garmentCard || msg.createdStyleDna || msg.createdFabricCard) ? (
+              {msg.role === 'agent' && msg.conflictResolution ? (
+                <div className="mt-2 border border-primary/20 rounded-lg p-3.5 bg-primary/5 space-y-3">
+                  <div className="flex items-center space-x-2 text-foreground font-medium text-xs">
+                    <Sparkles className="w-3.5 h-3.5 text-primary animate-pulse shrink-0" />
+                    <span>{msg.conflictResolution.question}</span>
+                  </div>
+                  {msg.conflictResolution.resolved ? (
+                    <div className="flex items-center space-x-2 text-muted-foreground bg-background/40 border border-border/50 rounded-md p-2.5 text-xs">
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                      <span>
+                        {language === 'zh' 
+                          ? `已选用: ${msg.conflictResolution.selectedOptionLabel}` 
+                          : `Selected: ${msg.conflictResolution.selectedOptionLabel}`}
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="grid gap-2">
+                      {msg.conflictResolution.options.map((opt: any) => (
+                        <button
+                          key={opt.id}
+                          type="button"
+                          onClick={() => handleSelectConflictOption(msg.id, opt)}
+                          className="w-full text-left text-xs bg-background/50 hover:bg-background border border-border hover:border-primary/40 rounded-md p-2.5 transition-all duration-200 cursor-pointer text-muted-foreground hover:text-foreground font-medium flex justify-between items-center group"
+                        >
+                          <span>{opt.label}</span>
+                          <ChevronRight className="w-3.5 h-3.5 text-muted-foreground group-hover:text-primary transition-colors shrink-0 ml-1.5" />
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ) : msg.role === 'agent' && (msg.garmentCard || msg.createdStyleDna || msg.createdFabricCard) ? (
                 <div className="mt-1">
                   {msg.garmentCard && (() => {
                     const isActive = activeGarment?.id === msg.garmentCard.id

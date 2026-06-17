@@ -18,6 +18,91 @@ async function imageUrlToPart(url: string) {
   };
 }
 
+// Helper function to detect parameter conflicts using Gemini 3.5-Flash NLP matching
+async function detectAndResolveConflict({
+  userPrompt,
+  activeFabricCard,
+  activeStyleDna,
+  projectFabricCards,
+  projectStyleDnas,
+}: {
+  userPrompt: string;
+  activeFabricCard: any;
+  activeStyleDna: any;
+  projectFabricCards: any[];
+  projectStyleDnas: any[];
+}) {
+  try {
+    const nlpAnalysisPrompt = `
+You are a professional fashion studio assistant. Your task is to analyze the user's design request and identify any semantic references to fabrics or style DNAs. Then, compare them with the active and available presets in the studio workspace to determine if there is a conflict.
+
+---
+ACTIVE WORKSPACE CONTEXT:
+- Active Fabric Card: ${activeFabricCard ? `"${activeFabricCard.name}" (ID: ${activeFabricCard.id})` : "None"}
+- Active Style DNA: ${activeStyleDna ? `"${activeStyleDna.name}" (ID: ${activeStyleDna.id})` : "None"}
+
+AVAILABLE FABRIC CARDS IN PROJECT:
+${projectFabricCards.map(f => `- "${f.name}" (ID: ${f.id}), Composition: ${f.composition}, Texture: ${f.texture}`).join('\n')}
+
+AVAILABLE STYLE DNAS IN PROJECT:
+${projectStyleDnas.map(s => `- "${s.name}" (ID: ${s.id}), Keywords: ${s.keywords.join(', ')}`).join('\n')}
+
+---
+USER REQUEST:
+"${userPrompt}"
+
+---
+INSTRUCTIONS & CRITICAL RULES:
+1. Parse the user request to find references to fabrics (e.g. "Merino", "羊绒", "卫衣布") or style DNAs (e.g. "Techwear", "工装风").
+2. Check if the mentioned material/style differs from the Active Fabric Card or Active Style DNA.
+3. SILENT EXECUTION RULE: If the user explicitly asks to use or switch to a fabric/style by name (e.g. "用 Merino", "换成 Merino 针织面料") and it can be matched with high confidence (95%+) to a single available card in the project, set "hasConflict" to false, and set "matchedEntityId" to that card's ID. We will apply it silently without popping options.
+4. AMBIGUITY INTERCEPT RULE: If the user requests to "change fabric" / "switch style" but the exact target is ambiguous (e.g., "换个面料试下", "换成针织的" when multiple exist), or if they express a direct contradiction (e.g. they say "用刚才的面料" but they also just manually selected a different one on the sidebar), set "hasConflict" to true.
+5. If "hasConflict" is true:
+   - Identify "conflictType" ("fabric", "style_dna").
+   - Generate a designer-like, goal-oriented question in Chinese (e.g., "您希望使用什么面料来展现这款设计？").
+   - Generate 2-4 dynamic options. Make option labels sound like creative design choices (e.g., "应用新一代 Premium Merino 针织以增强休闲感", "保留侧边栏激活的 Cashmere 羊绒材质"). Include a custom option with value "custom".
+6. If there is no mismatch or the request aligns with the active state, set "hasConflict" to false.
+`;
+
+    const response = await ai.models.generateContent({
+      model: 'gemini-3.5-flash',
+      contents: nlpAnalysisPrompt,
+      config: {
+        responseMimeType: 'application/json',
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            hasConflict: { type: Type.BOOLEAN },
+            conflictType: { type: Type.STRING },
+            question: { type: Type.STRING },
+            matchedEntityId: { type: Type.STRING },
+            options: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  id: { type: Type.STRING },
+                  label: { type: Type.STRING },
+                  value: { type: Type.STRING }
+                },
+                required: ['id', 'label', 'value']
+              }
+            }
+          },
+          required: ['hasConflict', 'conflictType']
+        }
+      }
+    });
+
+    const resultText = response.text || '';
+    const parsed = JSON.parse(resultText);
+    return parsed;
+  } catch (err) {
+    console.error('[Conflict Detector] NLP analysis failed:', err);
+    return { hasConflict: false, conflictType: 'none' };
+  }
+}
+
 // 1. Tool Declaration: Generate Garment Design
 const generateGarmentTool = {
   name: 'generate_garment_design',
@@ -106,7 +191,7 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json();
-    const { 
+    let { 
       prompt: userPrompt, 
       styleDnaId, 
       fabricCardId, 
@@ -119,7 +204,8 @@ export async function POST(request: Request) {
       stream = false,
       agentModel = 'auto',
       agentStyle = 'default',
-      imageResolution = '1024x1024'
+      imageResolution = '1024x1024',
+      conflictResolved = false
     } = body;
 
     if (!userPrompt) {
@@ -132,14 +218,16 @@ export async function POST(request: Request) {
     ) => {
       onStatus('understanding');
 
-      // Save user's message to chat_messages first
-      await supabase.from('chat_messages').insert({
-        project_id: projectId || null,
-        user_id: user.id,
-        role: 'user',
-        text: userPrompt,
-        image_urls: imageUrls || []
-      });
+      // Save user's message to chat_messages first, skipping on resubmission to avoid duplication
+      if (!conflictResolved) {
+        await supabase.from('chat_messages').insert({
+          project_id: projectId || null,
+          user_id: user.id,
+          role: 'user',
+          text: userPrompt,
+          image_urls: imageUrls || []
+        });
+      }
 
       // 2. Fetch Constraints Style DNA & Fabric parameters if provided
       let styleDnaData: any = null;
@@ -180,6 +268,71 @@ export async function POST(request: Request) {
           .in('id', referencedGarmentIds);
         if (data) {
           referencedGarmentsData = data;
+        }
+      }
+
+      // 2.5 Perform conflict detection if not already resolved by user
+      if (!conflictResolved) {
+        // Fetch project candidate lists to match
+        let projectFabricCards: any[] = [];
+        let projectStyleDnas: any[] = [];
+        if (projectId) {
+          const [fabricsRes, dnasRes] = await Promise.all([
+            supabase.from('fabric_cards').select('id, name, composition, texture, prompt_description').eq('project_id', projectId),
+            supabase.from('style_dnas').select('id, name, keywords, materials').eq('project_id', projectId)
+          ]);
+          projectFabricCards = fabricsRes.data || [];
+          projectStyleDnas = dnasRes.data || [];
+        }
+
+        const conflictResult = await detectAndResolveConflict({
+          userPrompt,
+          activeFabricCard: fabricCardData,
+          activeStyleDna: styleDnaData,
+          projectFabricCards,
+          projectStyleDnas
+        });
+
+        if (conflictResult.hasConflict) {
+          const conflictData = {
+            type: 'conflict_resolution',
+            conflictType: conflictResult.conflictType,
+            question: conflictResult.question || '您希望如何展现这款设计？',
+            options: conflictResult.options || []
+          };
+
+          // Save agent's conflict message to chat_messages DB
+          await supabase.from('chat_messages').insert({
+            project_id: projectId || null,
+            user_id: user.id,
+            role: 'agent',
+            text: conflictData.question,
+            grounding_metadata: {
+              ...conflictData,
+              resolved: false
+            }
+          });
+
+          // Return result early and terminate workflow execution
+          onResult(conflictData);
+          return;
+        } else if (conflictResult.matchedEntityId) {
+          // If Gemini silently mapped a fabric/style, use it to override the active selection
+          if (conflictResult.conflictType === 'fabric') {
+            const matchedFabric = projectFabricCards.find(f => f.id === conflictResult.matchedEntityId);
+            if (matchedFabric) {
+              fabricCardData = matchedFabric;
+              fabricCardId = matchedFabric.id; // Override local ID variable for downstream DB inserts
+              console.log('[Conflict Interceptor] Silent match applied fabric card:', matchedFabric.name);
+            }
+          } else if (conflictResult.conflictType === 'style_dna') {
+            const matchedDna = projectStyleDnas.find(s => s.id === conflictResult.matchedEntityId);
+            if (matchedDna) {
+              styleDnaData = matchedDna;
+              styleDnaId = matchedDna.id; // Override local ID variable for downstream DB inserts
+              console.log('[Conflict Interceptor] Silent match applied style DNA:', matchedDna.name);
+            }
+          }
         }
       }
 
@@ -476,9 +629,9 @@ Output only the category name ('DEEP_THINK', 'TOOL' or 'SEARCH') without any oth
           }
 
           if (displayMode === 'white_background') {
-            finalPrompt += `, professional studio fashion product photography, clean solid white background, flat lay composition, soft diffused ambient light, micro-texture details visible, high-end commercial aesthetic`;
+            finalPrompt += `, side-by-side double-view split-screen in 21:9 aspect ratio showing front view on the left and back view on the right of the same garment, professional studio fashion product photography, clean solid white background, flat lay composition, soft diffused ambient light, micro-texture details visible, high-end commercial aesthetic`;
           } else {
-            finalPrompt += `, professional fashion editorial photoshoot, model wearing the garment, full body shot, natural light, soft focus background, organic texture, high-end fashion magazine look`;
+            finalPrompt += `, three-view split-screen in 4:1 aspect ratio showing front view, side view, and back view of the model wearing the garment, professional fashion editorial photoshoot, full body shot, natural light, soft focus background, organic texture, high-end fashion magazine look`;
           }
 
           let generatedImageBuffer: Buffer;
@@ -508,7 +661,7 @@ Output only the category name ('DEEP_THINK', 'TOOL' or 'SEARCH') without any oth
                 config: {
                   responseModalities: ['IMAGE'],
                   imageConfig: { 
-                    aspectRatio: '1:1',
+                    aspectRatio: displayMode === 'white_background' ? '21:9' : '4:1',
                     imageSize: sizeVal
                   }
                 }
@@ -528,7 +681,7 @@ Output only the category name ('DEEP_THINK', 'TOOL' or 'SEARCH') without any oth
                 config: {
                   numberOfImages: 1,
                   outputMimeType: 'image/png',
-                  aspectRatio: '1:1',
+                  aspectRatio: displayMode === 'white_background' ? '21:9' : '4:1',
                 },
               });
               const generatedImage = imageGenResponse.generatedImages?.[0];
@@ -593,7 +746,8 @@ Output only the category name ('DEEP_THINK', 'TOOL' or 'SEARCH') without any oth
                 pockets: args.pockets,
                 closures: args.closures,
                 details: args.details || [],
-                review: review
+                review: review,
+                displayMode: displayMode
               },
               prompt: finalPrompt,
               negative_prompt: args.negative_prompt,

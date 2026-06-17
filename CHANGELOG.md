@@ -2,6 +2,29 @@
 
 All notable changes and implementations for the AI Personal Fashion Studio project are documented in this file.
 
+## [1.5.0] - 2026-06-17
+
+### Added
+- **Goal-Oriented Parameter Conflict Resolution & Decision Feedback Loop**
+  - **Backend Conflict Interceptor Middleware (`route.ts`)**: Integrates a deterministic interceptor after loading active constraints but before creating generation tasks. If a conflict between user prompt instructions and sidebar states is found, the system performs an early abort and returns a dynamic conflict resolution payload.
+  - **Gemini 3.5-Flash NLP Segmentation & Entity Matcher**: Analyzes semantic fabric and style DNA references within the user prompt, comparing them against the full candidate preset list of the project.
+  - **Silent Auto-Matching (Anti-Fatigue Guard)**: If the user explicitly names a card with high certainty (95%+), the system automatically updates the parameter variables and bypasses the card popup, silently proceeding with generation.
+  - **Interactive Frontend Decision Cards (`AgentChat.tsx`)**: Renders custom dynamic cards with frosted-glass single-choice button rows for unresolved conflicts. Clicking an option updates the global Zustand store (`activeFabricCardId` / `activeStyleDnaId`) to trigger immediate sidebar checkbox synchronizations.
+  - **Duplicate Message Prevention**: Skips inserting user message logs into `chat_messages` during auto-resubmission requests (carrying `conflictResolved: true`) to avoid message duplicates.
+  - **Persistent Card Resolution State**: Updates the database `grounding_metadata` to mark resolved cards as `resolved: true`. Loads and displays resolved historical card states as disabled, green-check-marked read-only fields ("已选用: XXX"), preventing duplicate clicks.
+  - **Store Active Garment State Linkage (`store.ts`)**: Extends `setActiveGarment` store action to automatically update active fabric card and style DNA IDs to align sidebar checkboxes whenever a garment is selected.
+
+## [1.4.0] - 2026-06-17
+
+### Added
+- **Multi-View Image Generation Pipeline (21:9 & 4:1)**
+  - **Cohesive Front, Back, and Side Views**: Shifted the image generation aspect ratio in `route.ts` from `'1:1'` to `'21:9'` (for 2-view white background flat lays) and `'4:1'` (for 3-view on-body models). Instructs the Gemini image generation model to render cohesive, side-by-side splits, solving the front-back styling inconsistency.
+  - **Preserving Generation Layout**: Saves the `displayMode` of the generation task inside the database `garment_cards.schema.displayMode` JSONB column. This ensures that historical or legacy 1:1 designs are displayed normally, while multi-view designs are handled dynamically.
+- **Frontend Sliding Cropping Viewport**
+  - **1:1 CSS Viewport Cropping**: Upgraded `GarmentCanvas.tsx` to wrap the image in a square aspect-ratio container with overflow hidden. It adjusts the image size dynamically (`233.333%` of the parent for 2-view, `400%` for 3-view), and applies exact CSS `translateX` offsets (`-3.57%` / `-53.57%` for 2-view; `-12.5%` / `-37.5%` / `-62.5%` for 3-view) to crop and center the viewport on each view seamlessly with custom sliding animations.
+  - **Interactive Angle Selector Toolbar**: Adds a floating, frosted glass pill button group ("正面", "侧面", "反面") at the bottom-left of the canvas, which is only rendered for multi-view garments.
+  - **Angle Synchronization in A/B Comparisons**: Upgraded `GarmentCompare.tsx` to include the same `activeAngle` state and button group. Both version A and version B images are automatically cropped and shifted to the selected angle in split screen and overlay modes, allowing users to compare the exact same angle between versions.
+
 ## [1.3.0] - 2026-06-16
 
 ### Added

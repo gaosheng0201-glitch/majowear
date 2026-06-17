@@ -71,6 +71,13 @@ export interface ChatMessage {
   loadingStatus?: string
   loadingTarget?: 'garment' | 'fabric' | 'style'
   error?: boolean
+  conflictResolution?: {
+    conflictType: 'fabric' | 'style_dna'
+    question: string
+    resolved: boolean
+    selectedOptionLabel?: string
+    options: Array<{ id: string; label: string; value: string }>
+  }
 }
 
 export interface GarmentCard {
@@ -89,6 +96,7 @@ export interface GarmentCard {
     pockets?: string
     closures?: string
     details?: string[]
+    displayMode?: 'white_background' | 'on_body'
     review?: {
       style_match_score: number
       fabric_match_score: number
@@ -174,7 +182,11 @@ export const useStudioStore = create<StudioState>((set) => ({
   addGarmentCard: (garmentCard) => set((state) => ({ garmentCards: [garmentCard, ...state.garmentCards] })),
   setActiveStyleDnaId: (activeStyleDnaId) => set({ activeStyleDnaId }),
   setActiveFabricCardId: (activeFabricCardId) => set({ activeFabricCardId }),
-  setActiveGarment: (activeGarment) => set({ activeGarment }),
+  setActiveGarment: (activeGarment) => set((state) => ({
+    activeGarment,
+    activeFabricCardId: activeGarment ? (activeGarment.fabric_card_id || state.activeFabricCardId) : state.activeFabricCardId,
+    activeStyleDnaId: activeGarment ? (activeGarment.style_dna_id || state.activeStyleDnaId) : state.activeStyleDnaId
+  })),
   setCollections: (collections) => set({ collections }),
   addCollection: (collection) => set((state) => ({ collections: [collection, ...state.collections] })),
   updateCollection: (collection) => set((state) => ({

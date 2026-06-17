@@ -53,6 +53,16 @@ export default function GarmentCompare({ isOpen, onClose }: GarmentCompareProps)
   }
 
   const familyGarments = getFamilyGarments()
+  const garmentDisplayMode = activeGarment?.schema?.displayMode
+  const isMultiView = !!garmentDisplayMode
+  const isThreeView = garmentDisplayMode === 'on_body'
+
+  // Angle state for multi-view garments
+  const [activeAngle, setActiveAngle] = useState<'front' | 'side' | 'back'>('front')
+
+  useEffect(() => {
+    setActiveAngle('front')
+  }, [isOpen, activeGarment?.id])
 
   // Selectable A and B versions
   const [versionAId, setVersionAId] = useState<string>("")
@@ -77,6 +87,43 @@ export default function GarmentCompare({ isOpen, onClose }: GarmentCompareProps)
   
   // Dragging states
   const [isDragging, setIsDragging] = useState(false)
+
+  // Crop translation helper for multi-view comparison
+  const getCompareImageStyle = (opacityVal?: number) => {
+    let baseStyle: any = {};
+    if (isMultiView) {
+      if (isThreeView) {
+        baseStyle = {
+          width: containerWidth ? `${containerWidth * 4}px` : '400%',
+          transform: `translateX(${
+            activeAngle === 'front' ? '-12.5%' :
+            activeAngle === 'side' ? '-37.5%' :
+            '-62.5%'
+          })`,
+          transition: 'transform 0.35s ease-out'
+        };
+      } else {
+        baseStyle = {
+          width: containerWidth ? `${containerWidth * 2.33333}px` : '233.333%',
+          transform: `translateX(${
+            activeAngle === 'front' ? '-3.57%' :
+            '-53.57%'
+          })`,
+          transition: 'transform 0.35s ease-out'
+        };
+      }
+    } else {
+      baseStyle = {
+        width: containerWidth ? `${containerWidth}px` : '100%'
+      };
+    }
+    
+    if (opacityVal !== undefined) {
+      baseStyle.opacity = opacityVal;
+    }
+    
+    return baseStyle;
+  };
 
   // Layout refs for measuring width of the actual image container card
   const containerRef = useRef<HTMLDivElement>(null)
@@ -194,6 +241,41 @@ export default function GarmentCompare({ isOpen, onClose }: GarmentCompareProps)
             </select>
           </div>
 
+          {/* Angle Selector Tabs */}
+          {isMultiView && (
+            <div className="flex bg-zinc-800/80 p-0.5 rounded-lg border border-white/10 h-8 shrink-0">
+              <Button
+                type="button"
+                variant={activeAngle === 'front' ? 'default' : 'ghost'}
+                size="sm"
+                onClick={() => setActiveAngle('front')}
+                className="text-[10px] h-full px-2.5 border-none text-white hover:text-white"
+              >
+                {language === 'zh' ? '正面' : 'Front'}
+              </Button>
+              {isThreeView && (
+                <Button
+                  type="button"
+                  variant={activeAngle === 'side' ? 'default' : 'ghost'}
+                  size="sm"
+                  onClick={() => setActiveAngle('side')}
+                  className="text-[10px] h-full px-2.5 border-none text-white hover:text-white"
+                >
+                  {language === 'zh' ? '侧面' : 'Side'}
+                </Button>
+              )}
+              <Button
+                type="button"
+                variant={activeAngle === 'back' ? 'default' : 'ghost'}
+                size="sm"
+                onClick={() => setActiveAngle('back')}
+                className="text-[10px] h-full px-2.5 border-none text-white hover:text-white"
+              >
+                {language === 'zh' ? '反面' : 'Back'}
+              </Button>
+            </div>
+          )}
+
           {/* Mode Toggles */}
           <div className="flex bg-zinc-800/80 p-0.5 rounded-lg border border-white/10 h-8 shrink-0">
             <Button
@@ -242,7 +324,11 @@ export default function GarmentCompare({ isOpen, onClose }: GarmentCompareProps)
                 <img 
                   src={imgB} 
                   alt="Version B" 
-                  className="absolute inset-0 w-full h-full object-cover pointer-events-none"
+                  className={isMultiView 
+                    ? "absolute top-0 left-0 h-full max-w-none pointer-events-none" 
+                    : "absolute inset-0 w-full h-full object-cover pointer-events-none"
+                  }
+                  style={getCompareImageStyle()}
                   draggable={false}
                 />
                 
@@ -254,8 +340,11 @@ export default function GarmentCompare({ isOpen, onClose }: GarmentCompareProps)
                   <img 
                     src={imgA} 
                     alt="Version A" 
-                    className="absolute top-0 left-0 h-full object-cover max-w-none pointer-events-none"
-                    style={{ width: containerWidth ? `${containerWidth}px` : '100%' }}
+                    className={isMultiView 
+                      ? "absolute top-0 left-0 h-full max-w-none pointer-events-none" 
+                      : "absolute top-0 left-0 h-full object-cover max-w-none pointer-events-none"
+                    }
+                    style={getCompareImageStyle()}
                     draggable={false}
                   />
                 </div>
@@ -276,7 +365,11 @@ export default function GarmentCompare({ isOpen, onClose }: GarmentCompareProps)
                 <img 
                   src={imgA} 
                   alt="Version A" 
-                  className="absolute inset-0 w-full h-full object-cover pointer-events-none"
+                  className={isMultiView 
+                    ? "absolute top-0 left-0 h-full max-w-none pointer-events-none" 
+                    : "absolute inset-0 w-full h-full object-cover pointer-events-none"
+                  }
+                  style={getCompareImageStyle()}
                   draggable={false}
                 />
                 
@@ -284,8 +377,11 @@ export default function GarmentCompare({ isOpen, onClose }: GarmentCompareProps)
                 <img 
                   src={imgB} 
                   alt="Version B" 
-                  className="absolute inset-0 w-full h-full object-cover pointer-events-none"
-                  style={{ opacity: opacity / 100 }}
+                  className={isMultiView 
+                    ? "absolute top-0 left-0 h-full max-w-none pointer-events-none" 
+                    : "absolute inset-0 w-full h-full object-cover pointer-events-none"
+                  }
+                  style={getCompareImageStyle(opacity / 100)}
                   draggable={false}
                 />
               </>
