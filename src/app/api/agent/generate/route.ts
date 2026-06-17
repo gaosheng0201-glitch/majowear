@@ -959,33 +959,40 @@ Output only the category name ('DEEP_THINK', 'TOOL' or 'SEARCH') without any oth
           
           let styleDna = createdStyleDna;
           if (!styleDna) {
-            const { data: newDna, error: styleError } = await supabase
-              .from('style_dnas')
-              .insert({
-                user_id: user.id,
-                project_id: projectId || null,
-                name: args.name,
-                reference_images: imageUrls || [],
-                keywords: args.keywords || [],
-                colors: args.colors || [],
-                silhouettes: args.silhouettes || [],
-                materials: args.materials || [],
-                details: args.details || [],
-                avoid: args.avoid || []
-              })
-              .select()
-              .single();
+            if (conflictResolved && styleDnaId && isUuid(styleDnaId) && styleDnaData) {
+              styleDna = styleDnaData;
+              replyText = `已根据您的选择，激活并使用已有的风格基因："${styleDna.name}"。`;
+            } else {
+              const { data: newDna, error: styleError } = await supabase
+                .from('style_dnas')
+                .insert({
+                  user_id: user.id,
+                  project_id: projectId || null,
+                  name: args.name,
+                  reference_images: imageUrls || [],
+                  keywords: args.keywords || [],
+                  colors: args.colors || [],
+                  silhouettes: args.silhouettes || [],
+                  materials: args.materials || [],
+                  details: args.details || [],
+                  avoid: args.avoid || []
+                })
+                .select()
+                .single();
 
-            if (styleError) {
-              throw styleError;
+              if (styleError) {
+                throw styleError;
+              }
+              styleDna = newDna;
+              replyText = `我已为您成功录入风格基因预设："${styleDna.name}"。\n\n**关键词**: ${styleDna.keywords.join(', ')}\n**色彩**: ${styleDna.colors.join(', ')}\n**廓形**: ${styleDna.silhouettes.join(', ')}`;
             }
-            styleDna = newDna;
+          } else {
+            replyText = `我已为您成功录入风格基因预设："${styleDna.name}"。\n\n**关键词**: ${styleDna.keywords.join(', ')}\n**色彩**: ${styleDna.colors.join(', ')}\n**廓形**: ${styleDna.silhouettes.join(', ')}`;
           }
 
           onStatus('saving_style_dna', 'style');
 
           createdStyleDna = styleDna;
-          replyText = `我已为您成功录入风格基因预设："${createdStyleDna.name}"。\n\n**关键词**: ${createdStyleDna.keywords.join(', ')}\n**色彩**: ${createdStyleDna.colors.join(', ')}\n**廓形**: ${createdStyleDna.silhouettes.join(', ')}`;
 
           await supabase.from('chat_messages').insert({
             ...(validAgentMsgId ? { id: validAgentMsgId } : {}),
@@ -1006,35 +1013,42 @@ Output only the category name ('DEEP_THINK', 'TOOL' or 'SEARCH') without any oth
 
           let fabricCard = createdFabricCard;
           if (!fabricCard) {
-            const { data: newFabric, error: fabricError } = await supabase
-              .from('fabric_cards')
-              .insert({
-                user_id: user.id,
-                project_id: projectId || null,
-                name: args.name,
-                image: imageUrls && imageUrls.length > 0 ? imageUrls[0] : null,
-                composition: args.composition,
-                weight_gsm: args.weight_gsm,
-                texture: args.texture,
-                drape: args.drape,
-                stretch: args.stretch,
-                sheen: args.sheen,
-                transparency: args.transparency,
-                prompt_description: args.prompt_description
-              })
-              .select()
-              .single();
+            if (conflictResolved && fabricCardId && isUuid(fabricCardId) && fabricCardData) {
+              fabricCard = fabricCardData;
+              replyText = `已根据您的选择，激活并使用已有的面料样卡："${fabricCard.name}"。`;
+            } else {
+              const { data: newFabric, error: fabricError } = await supabase
+                .from('fabric_cards')
+                .insert({
+                  user_id: user.id,
+                  project_id: projectId || null,
+                  name: args.name,
+                  image: imageUrls && imageUrls.length > 0 ? imageUrls[0] : null,
+                  composition: args.composition,
+                  weight_gsm: args.weight_gsm,
+                  texture: args.texture,
+                  drape: args.drape,
+                  stretch: args.stretch,
+                  sheen: args.sheen,
+                  transparency: args.transparency,
+                  prompt_description: args.prompt_description
+                })
+                .select()
+                .single();
 
-            if (fabricError) {
-              throw fabricError;
+              if (fabricError) {
+                throw fabricError;
+              }
+              fabricCard = newFabric;
+              replyText = `我已为您成功录入面料样卡预设："${fabricCard.name}"。\n\n**成分**: ${fabricCard.composition}\n**厚度/克重**: ${fabricCard.weight_gsm ? `${fabricCard.weight_gsm} GSM` : '未指定'}\n**纹理**: ${fabricCard.texture}\n**生图描述**: ${fabricCard.prompt_description}`;
             }
-            fabricCard = newFabric;
+          } else {
+            replyText = `我已为您成功录入面料样卡预设："${fabricCard.name}"。\n\n**成分**: ${fabricCard.composition}\n**厚度/克重**: ${fabricCard.weight_gsm ? `${fabricCard.weight_gsm} GSM` : '未指定'}\n**纹理**: ${fabricCard.texture}\n**生图描述**: ${fabricCard.prompt_description}`;
           }
 
           onStatus('saving_fabric_card', 'fabric');
 
           createdFabricCard = fabricCard;
-          replyText = `我已为您成功录入面料样卡预设："${createdFabricCard.name}"。\n\n**成分**: ${createdFabricCard.composition}\n**厚度/克重**: ${createdFabricCard.weight_gsm ? `${createdFabricCard.weight_gsm} GSM` : '未指定'}\n**纹理**: ${createdFabricCard.texture}\n**生图描述**: ${createdFabricCard.prompt_description}`;
 
           await supabase.from('chat_messages').insert({
             ...(validAgentMsgId ? { id: validAgentMsgId } : {}),
