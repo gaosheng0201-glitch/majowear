@@ -11,7 +11,7 @@ All notable changes and implementations for the AI Personal Fashion Studio proje
 
 ### Changed
 - **Balanced Design Rationale Prompt Constraints**
-  - Adjusts system prompt guidelines and `design_rationale` tool parameter descriptions in `route.ts` to instruct the LLM to balance design explanations (cuts, silhouettes, collar/sleeve styles, visual highlights) with active fabric properties, ensuring the rationale doesn't over-index exclusively on fabric descriptions.
+  - Adjusts system prompt guidelines and `design_rationale` tool parameter descriptions in `route.ts` to instruct the LLM to prioritize the design concept and functional features (cuts, seams, silhouettes, vibe), treating materials as a service to those goals. Prevents rationales from reading like plain material specifications.
 
 ### Fixed
 - **Conflict Resolution Card Duplication on Existing Choice**
