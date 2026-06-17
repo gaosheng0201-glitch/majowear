@@ -18,6 +18,88 @@ async function imageUrlToPart(url: string) {
   };
 }
 
+
+// Helper function to generate detailed specifications for a concept fabric card using Gemini 3.5-Flash
+async function generateFabricCardSpecs(conceptId: string, userPrompt: string) {
+  const prompt = `You are a professional textile expert and fashion studio assistant.
+The user is designing a garment with the request: "${userPrompt}".
+The selected concept fabric/material is identified as: "${conceptId}".
+
+Please define the detailed physical specifications of this fabric:
+1. Determine a clean, professional, and elegant name for this fabric (e.g., if the concept is "custom_neoprene", name it "Neoprene" or "专业潜水料"; match the user prompt's language or use a standard name).
+2. Estimate a realistic fiber composition (e.g. "85% Neoprene, 15% Nylon").
+3. Choose a realistic weight in GSM (grams per square meter, an integer like 320).
+4. Describe its texture (e.g. "smooth synthetic matte"), drape (e.g. "crisp structural"), stretch (e.g. "2-way stretch"), sheen (e.g. "matte"), and transparency (e.g. "opaque").
+5. Write an optimized English texturing prompt description for rendering this exact fabric in image generation models (e.g. "thick matte neoprene texture, smooth synthetic surface, structural drape, clean edges").
+
+Output MUST follow the requested JSON schema.`;
+
+  const response = await ai.models.generateContent({
+    model: 'gemini-3.5-flash',
+    contents: prompt,
+    config: {
+      temperature: 0.2,
+      responseMimeType: 'application/json',
+      responseSchema: {
+        type: Type.OBJECT,
+        properties: {
+          name: { type: Type.STRING },
+          composition: { type: Type.STRING },
+          weight_gsm: { type: Type.INTEGER },
+          texture: { type: Type.STRING },
+          drape: { type: Type.STRING },
+          stretch: { type: Type.STRING },
+          sheen: { type: Type.STRING },
+          transparency: { type: Type.STRING },
+          prompt_description: { type: Type.STRING }
+        },
+        required: ['name', 'composition', 'weight_gsm', 'texture', 'drape', 'stretch', 'sheen', 'transparency', 'prompt_description']
+      }
+    }
+  });
+
+  const parsed = JSON.parse(response.text || '{}');
+  return parsed;
+}
+
+// Helper function to generate detailed specifications for a style DNA card using Gemini 3.5-Flash
+async function generateStyleDnaSpecs(conceptId: string, userPrompt: string) {
+  const prompt = `You are a professional fashion director.
+The user is designing a garment with the request: "${userPrompt}".
+The selected style concept is identified as: "${conceptId}".
+
+Please define the detailed style DNA parameters:
+1. Determine a clean, professional, and elegant name for this style (e.g. "Urban Techwear" or "运动高街风"; match the user prompt's language or use a standard name).
+2. Define key elements of this style DNA: keywords, colors, silhouettes, materials, details, and elements to avoid.
+
+Output MUST follow the requested JSON schema.`;
+
+  const response = await ai.models.generateContent({
+    model: 'gemini-3.5-flash',
+    contents: prompt,
+    config: {
+      temperature: 0.2,
+      responseMimeType: 'application/json',
+      responseSchema: {
+        type: Type.OBJECT,
+        properties: {
+          name: { type: Type.STRING },
+          keywords: { type: Type.ARRAY, items: { type: Type.STRING } },
+          colors: { type: Type.ARRAY, items: { type: Type.STRING } },
+          silhouettes: { type: Type.ARRAY, items: { type: Type.STRING } },
+          materials: { type: Type.ARRAY, items: { type: Type.STRING } },
+          details: { type: Type.ARRAY, items: { type: Type.STRING } },
+          avoid: { type: Type.ARRAY, items: { type: Type.STRING } }
+        },
+        required: ['name', 'keywords', 'colors', 'silhouettes', 'materials', 'details', 'avoid']
+      }
+    }
+  });
+
+  const parsed = JSON.parse(response.text || '{}');
+  return parsed;
+}
+
 // Helper function to detect parameter conflicts using Gemini 3.5-Flash NLP matching
 async function detectAndResolveConflict({
   userPrompt,
@@ -216,9 +298,13 @@ export async function POST(request: Request) {
 
     const runWorkflow = async (
       onStatus: (status: string, target?: string) => void,
-      onResult: (data: any) => void
+      onResult: (data: any) => void,
+      onCustomChunk?: (type: string, data: any) => void
     ) => {
       onStatus('understanding');
+
+      let createdFabricCard: any = null;
+      let createdStyleDna: any = null;
 
       // Save user's message to chat_messages first, skipping on resubmission to avoid duplication
       if (!conflictResolved) {
@@ -231,9 +317,74 @@ export async function POST(request: Request) {
         });
       }
 
-      // 2. Fetch Constraints Style DNA & Fabric parameters if provided
       let styleDnaData: any = null;
-      if (styleDnaId && isUuid(styleDnaId)) {
+      let fabricCardData: any = null;
+
+      // 1.5 Sub-agent dynamic asset generation pipeline (v1.6.6)
+      // Handle Fabric Card pre-generation
+      if (fabricCardId && !isUuid(fabricCardId)) {
+        onStatus('waiting_subagent_fabric', fabricCardId);
+        onStatus('subagent_generating_fabric', fabricCardId);
+        const specs = await generateFabricCardSpecs(fabricCardId, userPrompt);
+        
+        onStatus('subagent_saving_fabric', fabricCardId);
+        const { data: newFabric, error: insertErr } = await supabase
+          .from('fabric_cards')
+          .insert({
+            ...specs,
+            user_id: user.id,
+            project_id: projectId || null
+          })
+          .select()
+          .single();
+
+        if (insertErr) {
+          throw new Error(`Failed to save dynamic fabric card: ${insertErr.message}`);
+        }
+
+        if (newFabric) {
+          fabricCardId = newFabric.id;
+          fabricCardData = newFabric;
+          createdFabricCard = newFabric;
+          if (onCustomChunk) {
+            onCustomChunk('created_fabric', newFabric);
+          }
+        }
+      }
+
+      // Handle Style DNA pre-generation
+      if (styleDnaId && !isUuid(styleDnaId)) {
+        onStatus('waiting_subagent_style', styleDnaId);
+        onStatus('subagent_generating_style', styleDnaId);
+        const specs = await generateStyleDnaSpecs(styleDnaId, userPrompt);
+        
+        onStatus('subagent_saving_style', styleDnaId);
+        const { data: newDna, error: insertErr } = await supabase
+          .from('style_dnas')
+          .insert({
+            ...specs,
+            user_id: user.id,
+            project_id: projectId || null
+          })
+          .select()
+          .single();
+
+        if (insertErr) {
+          throw new Error(`Failed to save dynamic style DNA: ${insertErr.message}`);
+        }
+
+        if (newDna) {
+          styleDnaId = newDna.id;
+          styleDnaData = newDna;
+          createdStyleDna = newDna;
+          if (onCustomChunk) {
+            onCustomChunk('created_style', newDna);
+          }
+        }
+      }
+
+      // 2. Fetch Constraints Style DNA & Fabric parameters if provided
+      if (styleDnaId && isUuid(styleDnaId) && !styleDnaData) {
         const { data } = await supabase
           .from('style_dnas')
           .select('*')
@@ -242,8 +393,7 @@ export async function POST(request: Request) {
         styleDnaData = data;
       }
 
-      let fabricCardData: any = null;
-      if (fabricCardId && isUuid(fabricCardId)) {
+      if (fabricCardId && isUuid(fabricCardId) && !fabricCardData) {
         const { data } = await supabase
           .from('fabric_cards')
           .select('*')
@@ -574,8 +724,8 @@ Output only the category name ('DEEP_THINK', 'TOOL' or 'SEARCH') without any oth
 
       let isToolCalled = false;
       let garmentCard = null;
-      let createdStyleDna = null;
-      let createdFabricCard = null;
+      createdStyleDna = createdStyleDna || null;
+      createdFabricCard = createdFabricCard || null;
       let replyText = "";
       const groundingMetadata = geminiResponse.candidates?.[0]?.groundingMetadata || null;
 
@@ -924,8 +1074,13 @@ Output only the category name ('DEEP_THINK', 'TOOL' or 'SEARCH') without any oth
             controller.enqueue(encoder.encode(data + '\n'));
           };
 
+          const sendCustomChunk = (type: string, data: any) => {
+            const payload = JSON.stringify({ type, data });
+            controller.enqueue(encoder.encode(payload + '\n'));
+          };
+
           try {
-            await runWorkflow(sendStatus, sendResult);
+            await runWorkflow(sendStatus, sendResult, sendCustomChunk);
           } catch (err: any) {
             console.error('Error in workflow streaming:', err);
             sendError(err?.message || 'Server execution error');
@@ -940,6 +1095,7 @@ Output only the category name ('DEEP_THINK', 'TOOL' or 'SEARCH') without any oth
           'Content-Type': 'text/plain; charset=utf-8',
           'Cache-Control': 'no-cache',
           'Connection': 'keep-alive',
+          'X-Content-Type-Options': 'nosniff'
         }
       });
     } else {
@@ -947,7 +1103,8 @@ Output only the category name ('DEEP_THINK', 'TOOL' or 'SEARCH') without any oth
       let finalResultData: any = null;
       await runWorkflow(
         () => {}, // no-op
-        (res) => { finalResultData = res; }
+        (res) => { finalResultData = res; },
+        () => {} // no-op
       );
 
       return NextResponse.json({

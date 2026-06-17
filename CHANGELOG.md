@@ -2,6 +2,19 @@
 
 All notable changes and implementations for the AI Personal Fashion Studio project are documented in this file.
 
+## [1.6.0] - 2026-06-17
+
+### Added
+- **Sub-agent (助手 Agent) Dynamic Asset Pre-generation Pipeline**
+  - **Specs Generation (Gemini 3.5-Flash with JSON Schema)**: Adds `generateFabricCardSpecs` and `generateStyleDnaSpecs` helper functions in the backend (`route.ts`) to dynamically define physical specifications for new materials (composition, weight, texture) and styles.
+  - **Fail-fast Database Sync**: Intercepts custom concept parameters (e.g. `custom_neoprene`), creates new card records under the active project with correct user and project associations, and returns the newly generated real UUIDs to the main generation loop. Rejects silent fallbacks, throwing clear errors on failure to preserve data consistency.
+  - **Immediate Local Asset Streaming**: Streams created fabric and style cards immediately as `created_fabric`/`created_style` chunks through the ReadableStream, before the main garment is fully generated.
+- **Double Collaborating Status Transparency UX**
+  - **Design Agent & Assistant Agent (助手 Agent) Split**: Shows explicit collaborative roles in the chat view. While the Assistant Agent is running, the Design Agent shows: `正在等待助手 Agent 创建面料...`.
+  - **Collaborating Badge (SVG only)**: Renders a dedicated collaborating state card under the main status line using a spinning SVG icon (Lucide `<Sparkles />` component), strictly avoiding unicode emojis like `⚡` to preserve workspace aesthetics.
+  - **Skeleton-to-Card Transition**: Reuses native fabric/style skeletons during sub-agent generation, which instantly morph into actual fully-functional, highlighted workspace cards as soon as the chunk data is received.
+  - **Parallel Stream Parsing**: Refactors `readStream` and stream outcome hooks in `AgentChat.tsx` to concurrently parse, update stores, and highlight newly added assets together with the main garment card.
+
 ## [1.5.0] - 2026-06-17
 
 ### Added

@@ -106,6 +106,12 @@ const getStatusLabel = (status: string, lang: 'zh' | 'en') => {
       case 'rendering': return '正在调用生图引擎渲染效果图...';
       case 'saving': return '正在归档设计图并编写工艺规格单...';
       case 'searching': return '正在检索流行趋势与相关信源...';
+      case 'waiting_subagent_fabric': return '正在等待助手 Agent 创建面料...';
+      case 'waiting_subagent_style': return '正在等待助手 Agent 创建风格基因...';
+      case 'subagent_generating_fabric': return '助手 Agent：正在设计面料物理参数 (成分、克重、纹理等)...';
+      case 'subagent_saving_fabric': return '助手 Agent：正在将新面料样卡归档建卡入库...';
+      case 'subagent_generating_style': return '助手 Agent：正在推导新风格的基因参数 (色彩、细节、廓形等)...';
+      case 'subagent_saving_style': return '助手 Agent：正在将新风格基因归档入库...';
       default: return '设计助手正在运行中...';
     }
   } else {
@@ -125,6 +131,12 @@ const getStatusLabel = (status: string, lang: 'zh' | 'en') => {
       case 'rendering': return 'Rendering high-fidelity swatches...';
       case 'saving': return 'Saving specifications and files...';
       case 'searching': return 'Searching trends and citations...';
+      case 'waiting_subagent_fabric': return 'Waiting for Assistant Agent to create fabric...';
+      case 'waiting_subagent_style': return 'Waiting for Assistant Agent to create style...';
+      case 'subagent_generating_fabric': return 'Assistant Agent: Designing fabric physical parameters (composition, GSM, texture)...';
+      case 'subagent_saving_fabric': return 'Assistant Agent: Saving new fabric card to database...';
+      case 'subagent_generating_style': return 'Assistant Agent: Deriving new style DNA parameters...';
+      case 'subagent_saving_style': return 'Assistant Agent: Saving new style DNA to database...';
       default: return 'AI Assistant is running...';
     }
   }
@@ -564,6 +576,34 @@ export default function AgentChat() {
               return m
             })
             setMessages(updated)
+          } else if (chunk.type === 'created_fabric') {
+            addFabricCard(chunk.data)
+            setActiveFabricCardId(chunk.data.id)
+            const currentMessages = useStudioStore.getState().messages
+            const updated = currentMessages.map(m => {
+              if (m.id === agentMsgId) {
+                return {
+                  ...m,
+                  createdFabricCard: chunk.data
+                }
+              }
+              return m
+            })
+            setMessages(updated)
+          } else if (chunk.type === 'created_style') {
+            addStyleDna(chunk.data)
+            setActiveStyleDnaId(chunk.data.id)
+            const currentMessages = useStudioStore.getState().messages
+            const updated = currentMessages.map(m => {
+              if (m.id === agentMsgId) {
+                return {
+                  ...m,
+                  createdStyleDna: chunk.data
+                }
+              }
+              return m
+            })
+            setMessages(updated)
           } else if (chunk.type === 'error') {
             throw new Error(chunk.message || "Backend streamed error")
           } else if (chunk.type === 'result') {
@@ -599,6 +639,15 @@ export default function AgentChat() {
           loading: false
         }
       } else if (resData.isToolCalled) {
+        if (resData.createdFabricCard) {
+          addFabricCard(resData.createdFabricCard)
+          setActiveFabricCardId(resData.createdFabricCard.id)
+        }
+        if (resData.createdStyleDna) {
+          addStyleDna(resData.createdStyleDna)
+          setActiveStyleDnaId(resData.createdStyleDna.id)
+        }
+
         if (resData.garmentCard) {
           const gCard = resData.garmentCard as GarmentCard
           addGarmentCard(gCard)
@@ -610,13 +659,12 @@ export default function AgentChat() {
             text: resData.replyText,
             garmentCard: gCard,
             garment_card_id: gCard.id,
+            createdFabricCard: resData.createdFabricCard || updated[index]?.createdFabricCard || null,
+            createdStyleDna: resData.createdStyleDna || updated[index]?.createdStyleDna || null,
             loading: false
           }
         } else if (resData.createdStyleDna) {
           const sDna = resData.createdStyleDna
-          addStyleDna(sDna)
-          setActiveStyleDnaId(sDna.id)
-
           updated[index] = {
             id: agentMsgId,
             role: 'agent',
@@ -626,9 +674,6 @@ export default function AgentChat() {
           }
         } else if (resData.createdFabricCard) {
           const fCard = resData.createdFabricCard
-          addFabricCard(fCard)
-          setActiveFabricCardId(fCard.id)
-
           updated[index] = {
             id: agentMsgId,
             role: 'agent',
@@ -1121,12 +1166,141 @@ export default function AgentChat() {
               )}
               
               {msg.loading && (
-                <div className="space-y-2.5 mt-3">
+                <div className="space-y-3 mt-3">
+                  {/* Main Status Indicator */}
                   <div className="flex items-center space-x-2 text-xs text-muted-foreground">
                     <Loader2 className="w-3.5 h-3.5 animate-spin text-primary shrink-0" />
                     <span>{getStatusLabel(msg.loadingStatus || 'understanding', language)}</span>
                   </div>
 
+                  {/* 1. Assistant Agent Collaboration Panel */}
+                  {(msg.loadingStatus?.includes('subagent') || msg.loadingStatus?.includes('waiting_subagent_')) && (
+                    <div className="mt-2 border border-primary/10 rounded-lg p-3 bg-primary/5 space-y-3">
+                      <div className="flex items-center space-x-2 text-primary font-medium text-xs">
+                        <Sparkles className="w-3.5 h-3.5 animate-spin text-primary shrink-0" style={{ animationDuration: '3.5s' }} />
+                        <span>
+                          {language === 'zh' ? '助手 Agent 协同中' : 'Assistant Agent Active'}
+                        </span>
+                      </div>
+                      
+                      {/* Fabric Target */}
+                      {(msg.loadingStatus?.includes('fabric') || msg.loadingTarget === 'fabric') && (
+                        <div>
+                          {msg.createdFabricCard ? (
+                            (() => {
+                              const isFabricActive = activeFabricCardId === msg.createdFabricCard.id;
+                              return (
+                                <div 
+                                  onClick={() => msg.createdFabricCard && setActiveFabricCardId(msg.createdFabricCard.id)}
+                                  className={`cursor-pointer rounded-lg border p-2 flex items-center justify-between transition-all duration-200 ${
+                                    isFabricActive 
+                                      ? 'bg-primary/5 border-primary/30 shadow-sm' 
+                                      : 'bg-background/40 border-border hover:bg-background/80 hover:border-muted-foreground/30'
+                                  }`}
+                                >
+                                  <div className="flex items-center space-x-2.5 truncate mr-2">
+                                    {msg.createdFabricCard.image && (
+                                      <div className="w-10 h-10 rounded border border-border overflow-hidden bg-muted shrink-0">
+                                        <img src={msg.createdFabricCard.image} alt="" className="w-full h-full object-cover" />
+                                      </div>
+                                    )}
+                                    <div className="truncate">
+                                      <div className="flex items-center space-x-1.5">
+                                        <span className="text-[9px] uppercase font-semibold text-primary bg-primary/10 px-1.5 py-0.5 rounded tracking-wide shrink-0">
+                                          {language === 'zh' ? '面料卡已录入' : 'Fabric Saved'}
+                                        </span>
+                                      </div>
+                                      <h4 className="text-xs font-semibold mt-1 text-foreground truncate max-w-[120px] lg:max-w-[150px]">
+                                        {msg.createdFabricCard.name}
+                                      </h4>
+                                    </div>
+                                  </div>
+                                  <Button 
+                                    size="sm" 
+                                    type="button"
+                                    variant={isFabricActive ? "default" : "ghost"}
+                                    className="h-6 text-[9px] shrink-0 font-medium px-2"
+                                  >
+                                    {isFabricActive 
+                                      ? (language === 'zh' ? '已激活' : 'Active') 
+                                      : (language === 'zh' ? '激活' : 'Activate')}
+                                  </Button>
+                                </div>
+                              );
+                            })()
+                          ) : (
+                            <div className="p-3 rounded-lg border border-border bg-background/25 space-y-2.5 animate-pulse">
+                              <div className="h-4 w-28 bg-muted rounded" />
+                              <div className="grid grid-cols-2 gap-2">
+                                <div className="h-3.5 w-full bg-muted rounded" />
+                                <div className="h-3.5 w-full bg-muted rounded" />
+                                <div className="h-3.5 w-full bg-muted rounded" />
+                                <div className="h-3.5 w-full bg-muted rounded" />
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Style DNA Target */}
+                      {(msg.loadingStatus?.includes('style') || msg.loadingTarget === 'style') && (
+                        <div>
+                          {msg.createdStyleDna ? (
+                            (() => {
+                              const isDnaActive = activeStyleDnaId === msg.createdStyleDna.id;
+                              return (
+                                <div 
+                                  onClick={() => msg.createdStyleDna && setActiveStyleDnaId(msg.createdStyleDna.id)}
+                                  className={`cursor-pointer rounded-lg border p-2 flex items-center justify-between transition-all duration-200 ${
+                                    isDnaActive 
+                                      ? 'bg-primary/5 border-primary/30 shadow-sm' 
+                                      : 'bg-background/40 border-border hover:bg-background/80 hover:border-muted-foreground/30'
+                                  }`}
+                                >
+                                  <div className="truncate mr-2">
+                                    <div className="flex items-center space-x-1.5">
+                                      <span className="text-[9px] uppercase font-semibold text-primary bg-primary/10 px-1.5 py-0.5 rounded tracking-wide shrink-0">
+                                        {language === 'zh' ? '风格 DNA 已录入' : 'Style DNA Saved'}
+                                      </span>
+                                    </div>
+                                    <h4 className="text-xs font-semibold mt-1 text-foreground truncate max-w-[120px] lg:max-w-[150px]">
+                                      {msg.createdStyleDna.name}
+                                    </h4>
+                                  </div>
+                                  <Button 
+                                    size="sm" 
+                                    type="button"
+                                    variant={isDnaActive ? "default" : "ghost"}
+                                    className="h-6 text-[9px] shrink-0 font-medium px-2"
+                                  >
+                                    {isDnaActive 
+                                      ? (language === 'zh' ? '已激活' : 'Active') 
+                                      : (language === 'zh' ? '激活' : 'Activate')}
+                                  </Button>
+                                </div>
+                              );
+                            })()
+                          ) : (
+                            <div className="p-3 rounded-lg border border-border bg-background/25 space-y-2.5 animate-pulse">
+                              <div className="h-4 w-32 bg-muted rounded" />
+                              <div className="flex flex-wrap gap-1">
+                                <div className="h-4 w-12 bg-muted rounded-full" />
+                                <div className="h-4 w-16 bg-muted rounded-full" />
+                                <div className="h-4 w-10 bg-muted rounded-full" />
+                              </div>
+                              <div className="flex items-center space-x-1">
+                                <div className="w-3.5 h-3.5 rounded-full bg-muted" />
+                                <div className="w-3.5 h-3.5 rounded-full bg-muted" />
+                                <div className="w-3.5 h-3.5 rounded-full bg-muted" />
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* 2. Design Agent Skeletons */}
                   {msg.loadingTarget === 'garment' && (
                     <div className="p-3 rounded-lg border border-border bg-background/25 flex items-center justify-between animate-pulse">
                       <div className="flex items-center space-x-2.5 truncate mr-2 flex-1">
@@ -1173,7 +1347,7 @@ export default function AgentChat() {
                     )
                   })()}
 
-                  {msg.loadingTarget === 'fabric' && (
+                  {msg.loadingTarget === 'fabric' && !msg.loadingStatus?.includes('subagent') && !msg.loadingStatus?.includes('waiting_') && (
                     <div className="p-3 rounded-lg border border-border bg-background/25 space-y-2.5 animate-pulse">
                       <div className="h-4 w-28 bg-muted rounded" />
                       <div className="grid grid-cols-2 gap-2">
@@ -1185,7 +1359,7 @@ export default function AgentChat() {
                     </div>
                   )}
 
-                  {msg.loadingTarget === 'style' && (
+                  {msg.loadingTarget === 'style' && !msg.loadingStatus?.includes('subagent') && !msg.loadingStatus?.includes('waiting_') && (
                     <div className="p-3 rounded-lg border border-border bg-background/25 space-y-2.5 animate-pulse">
                       <div className="h-4 w-32 bg-muted rounded" />
                       <div className="flex flex-wrap gap-1">
@@ -1199,6 +1373,88 @@ export default function AgentChat() {
                         <div className="w-3.5 h-3.5 rounded-full bg-muted" />
                       </div>
                     </div>
+                  )}
+
+                  {/* Render any created card while loading is still true (e.g. main agent is generating garment, but sub-agent has already created the fabric card) */}
+                  {!msg.loadingStatus?.includes('subagent') && !msg.loadingStatus?.includes('waiting_') && msg.createdFabricCard && (
+                    (() => {
+                      const isFabricActive = activeFabricCardId === msg.createdFabricCard.id;
+                      return (
+                        <div 
+                          onClick={() => msg.createdFabricCard && setActiveFabricCardId(msg.createdFabricCard.id)}
+                          className={`cursor-pointer rounded-lg border p-2 flex items-center justify-between transition-all duration-200 ${
+                            isFabricActive 
+                              ? 'bg-primary/5 border-primary/30 shadow-sm' 
+                              : 'bg-background/40 border-border hover:bg-background/80 hover:border-muted-foreground/30'
+                          }`}
+                        >
+                          <div className="flex items-center space-x-2.5 truncate mr-2">
+                            {msg.createdFabricCard.image && (
+                              <div className="w-10 h-10 rounded border border-border overflow-hidden bg-muted shrink-0">
+                                <img src={msg.createdFabricCard.image} alt="" className="w-full h-full object-cover" />
+                              </div>
+                            )}
+                            <div className="truncate">
+                              <div className="flex items-center space-x-1.5">
+                                <span className="text-[9px] uppercase font-semibold text-primary bg-primary/10 px-1.5 py-0.5 rounded tracking-wide shrink-0">
+                                  {language === 'zh' ? '面料卡已录入' : 'Fabric Saved'}
+                                </span>
+                              </div>
+                              <h4 className="text-xs font-semibold mt-1 text-foreground truncate max-w-[120px] lg:max-w-[150px]">
+                                {msg.createdFabricCard.name}
+                              </h4>
+                            </div>
+                          </div>
+                          <Button 
+                            size="sm" 
+                            type="button"
+                            variant={isFabricActive ? "default" : "ghost"}
+                            className="h-6 text-[9px] shrink-0 font-medium px-2"
+                          >
+                            {isFabricActive 
+                              ? (language === 'zh' ? '已激活' : 'Active') 
+                              : (language === 'zh' ? '激活' : 'Activate')}
+                          </Button>
+                        </div>
+                      );
+                    })()
+                  )}
+
+                  {!msg.loadingStatus?.includes('subagent') && !msg.loadingStatus?.includes('waiting_') && msg.createdStyleDna && (
+                    (() => {
+                      const isDnaActive = activeStyleDnaId === msg.createdStyleDna.id;
+                      return (
+                        <div 
+                          onClick={() => msg.createdStyleDna && setActiveStyleDnaId(msg.createdStyleDna.id)}
+                          className={`cursor-pointer rounded-lg border p-2 flex items-center justify-between transition-all duration-200 ${
+                            isDnaActive 
+                              ? 'bg-primary/5 border-primary/30 shadow-sm' 
+                              : 'bg-background/40 border-border hover:bg-background/80 hover:border-muted-foreground/30'
+                          }`}
+                        >
+                          <div className="truncate mr-2">
+                            <div className="flex items-center space-x-1.5">
+                              <span className="text-[9px] uppercase font-semibold text-primary bg-primary/10 px-1.5 py-0.5 rounded tracking-wide shrink-0">
+                                {language === 'zh' ? '风格 DNA 已录入' : 'Style DNA Saved'}
+                              </span>
+                            </div>
+                            <h4 className="text-xs font-semibold mt-1 text-foreground truncate max-w-[120px] lg:max-w-[150px]">
+                              {msg.createdStyleDna.name}
+                            </h4>
+                          </div>
+                          <Button 
+                            size="sm" 
+                            type="button"
+                            variant={isDnaActive ? "default" : "ghost"}
+                            className="h-6 text-[9px] shrink-0 font-medium px-2"
+                          >
+                            {isDnaActive 
+                              ? (language === 'zh' ? '已激活' : 'Active') 
+                              : (language === 'zh' ? '激活' : 'Activate')}
+                          </Button>
+                        </div>
+                      );
+                    })()
                   )}
                 </div>
               )}
