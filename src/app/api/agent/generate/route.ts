@@ -184,6 +184,7 @@ const createFabricCardTool = {
 export async function POST(request: Request) {
   try {
     const supabase = await createClient();
+    const isUuid = (str: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str);
     
     // 1. Auth Check
     const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -232,7 +233,7 @@ export async function POST(request: Request) {
 
       // 2. Fetch Constraints Style DNA & Fabric parameters if provided
       let styleDnaData: any = null;
-      if (styleDnaId) {
+      if (styleDnaId && isUuid(styleDnaId)) {
         const { data } = await supabase
           .from('style_dnas')
           .select('*')
@@ -242,7 +243,7 @@ export async function POST(request: Request) {
       }
 
       let fabricCardData: any = null;
-      if (fabricCardId) {
+      if (fabricCardId && isUuid(fabricCardId)) {
         const { data } = await supabase
           .from('fabric_cards')
           .select('*')
@@ -252,7 +253,7 @@ export async function POST(request: Request) {
       }
 
       let parentGarmentData: any = null;
-      if (parentVersionId) {
+      if (parentVersionId && isUuid(parentVersionId)) {
         const { data } = await supabase
           .from('garment_cards')
           .select('*')
@@ -263,12 +264,15 @@ export async function POST(request: Request) {
 
       let referencedGarmentsData: any[] = [];
       if (referencedGarmentIds && referencedGarmentIds.length > 0) {
-        const { data } = await supabase
-          .from('garment_cards')
-          .select('*')
-          .in('id', referencedGarmentIds);
-        if (data) {
-          referencedGarmentsData = data;
+        const validIds = referencedGarmentIds.filter(isUuid);
+        if (validIds.length > 0) {
+          const { data } = await supabase
+            .from('garment_cards')
+            .select('*')
+            .in('id', validIds);
+          if (data) {
+            referencedGarmentsData = data;
+          }
         }
       }
 
@@ -740,8 +744,8 @@ Output only the category name ('DEEP_THINK', 'TOOL' or 'SEARCH') without any oth
             .insert({
               user_id: user.id,
               project_id: projectId || null,
-              style_dna_id: styleDnaId || null,
-              fabric_card_id: fabricCardId || null,
+              style_dna_id: (styleDnaId && isUuid(styleDnaId)) ? styleDnaId : null,
+              fabric_card_id: (fabricCardId && isUuid(fabricCardId)) ? fabricCardId : null,
               title: args.title,
               category: args.category,
               images: [publicUrl],
