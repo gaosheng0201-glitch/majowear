@@ -462,6 +462,11 @@ ${referencedGarmentsData.map(rg => `- Title: ${rg.title} (ID: ${rg.id})
   - Rationale: ${rg.design_rationale}`).join('\n')}
 ` : ''}
 
+Constraint Alignment Guidelines:
+- You MUST strictly align the designed garment's prompt, details, and design_rationale with the active Fabric Properties (composition, texture, prompt description) and active Style DNA (keywords, colors, silhouettes) provided above.
+- If a Parent Garment Card is provided, you must completely replace its fabric, texture, weight, and composition references with the active Fabric Properties. For example, if the active Fabric Card is "Baby Cashmere", do not mention "Merino-Cotton" or "2x2 Ribbed Knit" in the prompt, details, or design rationale, even if the parent garment used them. Overwrite them completely with the active fabric card's properties (e.g., describe it as "luxury Baby Cashmere" and use the fabric's prompt description).
+- Do not let the parent garment's description override the active fabric card's composition or texture.
+
 Intent Guidelines:
 - If the user wants to design a garment, modify a design, or create a variant: call the 'generate_garment_design' tool.
   - If a Parent Garment Card is provided, and the user prompt is about modifying, tweaking, creating a variant, or iterating on it: set 'is_new_design' to false.
