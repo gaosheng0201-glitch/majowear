@@ -2,21 +2,7 @@ import { NextResponse } from 'next/server';
 import { ai } from '@/lib/gemini';
 import { createClient } from '@/lib/supabase/server';
 import { Schema, Type } from '@google/genai';
-
-async function imageUrlToPart(url: string) {
-  const response = await fetch(url);
-  if (!response.ok) {
-    throw new Error(`Failed to fetch image from URL: ${url}`);
-  }
-  const arrayBuffer = await response.arrayBuffer();
-  const mimeType = response.headers.get('content-type') || 'image/jpeg';
-  return {
-    inlineData: {
-      data: Buffer.from(arrayBuffer).toString('base64'),
-      mimeType,
-    },
-  };
-}
+import { imageUrlToPart } from '@/lib/imageUtils';
 
 const fabricSchema: Schema = {
   type: Type.OBJECT,

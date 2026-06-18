@@ -66,6 +66,7 @@ export interface ChatMessage {
   createdStyleDna?: StyleDna
   createdFabricCard?: FabricCard
   image_urls?: string[]
+  referencedGarmentIds?: string[]
   grounding_metadata?: any
   loading?: boolean
   loadingStatus?: string
@@ -77,6 +78,23 @@ export interface ChatMessage {
     resolved: boolean
     selectedOptionLabel?: string
     options: Array<{ id: string; label: string; value: string }>
+  }
+  designDecision?: {
+    analysisMarkdown: string
+    question: string
+    resolved: boolean
+    selectedOptionLabel?: string
+    selectedPromptAddition?: string
+    options: Array<{
+      id: string; label: string; summary: string
+      design_strategy: string; prompt_addition: string; value: string
+    }>
+    contextSnapshot?: any
+  }
+  garmentPreview?: {
+    title: string; category: string; fit: string; collar: string
+    sleeves: string; review: any
+    imageLoading: boolean
   }
 }
 
@@ -146,6 +164,7 @@ interface StudioState {
   updateCollection: (collection: Collection) => void
   setMessages: (messages: ChatMessage[]) => void
   addMessage: (message: ChatMessage) => void
+  updateMessageById: (id: string, patch: Partial<ChatMessage>) => void
   setChatLoading: (loading: boolean) => void
   setLanguage: (lang: 'zh' | 'en') => void
   setDisplayMode: (mode: 'white_background' | 'on_body') => void
@@ -203,6 +222,9 @@ export const useStudioStore = create<StudioState>((set) => ({
   })),
   setMessages: (messages) => set({ messages }),
   addMessage: (message) => set((state) => ({ messages: [...state.messages, message] })),
+  updateMessageById: (id, patch) => set((state) => ({
+    messages: state.messages.map(m => m.id === id ? { ...m, ...patch } : m)
+  })),
   setChatLoading: (chatLoading) => set({ chatLoading }),
   setLanguage: (language) => set({ language }),
   setDisplayMode: (displayMode) => set({ displayMode }),

@@ -2,6 +2,65 @@
 
 All notable changes and implementations for the AI Personal Fashion Studio project are documented in this file.
 
+## [2.0.0] - 2026-06-18
+
+### Added
+- **Multi-Round Agent Loop Engine (`src/lib/agents/agentLoop.ts`)**
+  - Implements a looping execution engine (up to 3 rounds) that classifies intent, selects the optimal model, dispatches tool calls to isolated handlers, feeds `functionResponse` back to the LLM for continued reasoning, and supports terminal tool interruption. Replaces the previous single-shot inline tool dispatch in `route.ts`.
+
+- **4-Class Intent Classifier (`src/lib/agents/intentClassifier.ts`)**
+  - Upgrades the previous 3-class classifier (`DEEP_THINK`/`TOOL`/`SEARCH`) to a 4-class workflow intent system: `GENERATE` (design tasks including search-then-design), `CREATE_ASSET` (Style DNA / Fabric Card creation), `SEARCH` (pure information retrieval), and `CHAT` (general conversation). Each intent maps to specific tool mounting and model selection strategies.
+
+- **Design Decision Card — In-Loop Pause Mechanism (`present_design_decision` tool)**
+  - New terminal tool that interrupts the Agent Loop and sends a structured design direction card to the frontend. Includes professional analysis markdown, a concise question, and 2-4 actionable design direction options with specific `prompt_addition` payloads.
+  - **Frontend Card UI (`AgentChat.tsx`)**: Renders amber-themed decision cards with analysis content, clickable option buttons, and resolved state display.
+  - **Resubmission Flow (`handleSelectDesignDecision`)**: User selection triggers a resubmission to `/api/agent/generate` carrying `decisionContext` (analysis + selected direction + prompt addition), which is injected into the system prompt to prevent re-asking.
+
+- **Tool Call Preview Streaming**
+  - Pushes structured `tool_call_preview` chunks before handler execution begins, containing garment metadata (title, category, fit, collar, review scores) for frontend skeleton card rendering during image generation.
+
+- **Modular Tool Handler Architecture (`src/lib/tools/handlers/`)**
+  - `garmentDesign.ts`: Handles image generation, upload, and garment card creation with `is_new_design` server-side fallback and predecessor image loading.
+  - `styleDna.ts`: Handles Style DNA creation or reuse with conflict resolution awareness.
+  - `fabricCard.ts`: Handles Fabric Card creation or reuse with conflict resolution awareness.
+  - `designDecision.ts`: Terminal handler that saves decision data to DB and streams it to frontend.
+
+- **Tool Declaration Registry (`src/lib/tools/declarations.ts`)**
+  - Centralizes all 4 tool function declarations and exports `getToolsForIntent()` for intent-based tool mounting. `GENERATE` intent mounts all 4 tools + Google Search; `CREATE_ASSET` mounts only asset tools; `SEARCH` mounts only Google Search.
+
+- **Tiered Candidate Query for Conflict Detection (`src/lib/agents/conflictDetector.ts`)**
+  - Implements project-priority + user-global-fallback query pattern for loading fabric and style DNA candidates, capped at 10 results. Ensures relevant project assets are prioritized while still surfacing cross-project assets as fallbacks.
+
+- **Shared Type System (`src/lib/types/agent.ts`)**
+  - Defines `WorkflowContext`, `ToolExecutionResult`, `AgentLoopResult`, `StreamCallbacks`, `AgentContextSnapshot`, and `WorkflowIntent` types used across all agent modules.
+
+- **Shared Utilities**
+  - `src/lib/imageUtils.ts`: Extracted `imageUrlToPart` for reuse across `route.ts`, `analyze-fabric`, and `analyze-style` routes.
+  - `src/lib/streaming.ts`: SSE streaming utilities (`encodeStreamChunk`, `createStreamResponse`).
+
+### Changed
+- **5-Layer System Prompt Architecture (`src/lib/prompts/systemPrompt.ts`)**
+  - Restructures the monolithic system prompt into 5 composable layers:
+    1. **Role Identity + Tone** (professional / friendly / default)
+    2. **Active Assets** (Style DNA, Fabric Card, Parent Garment, @-References with names)
+    3. **Constraint Alignment** (design-first rationale, fabric reference cleanliness)
+    4. **Tool Usage Guidelines** (per-tool instructions + `present_design_decision` trigger rules with explicit WHEN TO / WHEN NOT TO USE conditions)
+    5. **Semantic Mentions & Comparison** (@-mention matching, comparison tables, fusion rules)
+  - Decision context injection now explicitly instructs the LLM to proceed with generation rather than re-presenting decisions.
+
+- **Route.ts Modularization (1174 → ~500 lines, -57%)**
+  - Extracts intent classification, model selection, LLM invocation, tool dispatch, image generation, storage upload, and result assembly into independent modules. The route now focuses purely on request parsing, authentication, conflict detection orchestration, and agent loop invocation.
+
+- **Intent-Based Model Selection**
+  - Auto mode now uses `gemini-3.1-pro-preview` (thinking level HIGH) only when `GENERATE` intent combines with analysis keywords, avoiding unnecessary Pro usage for simple tool calls. Manual override (`agentModel` setting) is preserved.
+
+- **`analyze-fabric` and `analyze-style` Routes**
+  - Updated to import shared `imageUrlToPart` from `@/lib/imageUtils` instead of duplicating the function inline.
+
+### Fixed
+- **`is_new_design` Server-Side Fallback**: Adds deterministic server-side inference (`wantsNewDesign || !hasParentContext`) when the LLM omits the `is_new_design` parameter, preventing ambiguous edit-vs-new behavior.
+
+
 ## [1.6.4] - 2026-06-17
 
 ### Added

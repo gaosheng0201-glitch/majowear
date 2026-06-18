@@ -13,8 +13,10 @@ import {
   X,
   Settings,
   ChevronRight,
-  CheckCircle2
+  CheckCircle2,
+  Lightbulb
 } from "lucide-react"
+
 import { useStudioStore, ChatMessage, GarmentCard } from "@/lib/store"
 import { translations } from "@/lib/translations"
 import { createClient } from "@/lib/supabase/client"
@@ -608,6 +610,47 @@ export default function AgentChat() {
               return m
             })
             setMessages(updated)
+          } else if (chunk.type === 'tool_call_preview') {
+            // Tool call preview — update message with structured preview for skeleton rendering
+            const currentMessages = useStudioStore.getState().messages
+            const updated = currentMessages.map(m => {
+              if (m.id === agentMsgId && chunk.data.toolName === 'generate_garment_design') {
+                return {
+                  ...m,
+                  garmentPreview: {
+                    title: chunk.data.title || '',
+                    category: chunk.data.category || '',
+                    fit: chunk.data.fit || '',
+                    collar: chunk.data.collar || '',
+                    sleeves: chunk.data.sleeves || '',
+                    review: chunk.data.review || {},
+                    imageLoading: true
+                  }
+                }
+              }
+              return m
+            })
+            setMessages(updated)
+          } else if (chunk.type === 'design_decision') {
+            // Design decision card — terminal tool; update message with decision data
+            const currentMessages = useStudioStore.getState().messages
+            const updated = currentMessages.map(m => {
+              if (m.id === agentMsgId) {
+                return {
+                  ...m,
+                  designDecision: {
+                    analysisMarkdown: chunk.data.analysisMarkdown || '',
+                    question: chunk.data.question || '',
+                    resolved: false,
+                    options: chunk.data.options || [],
+                    contextSnapshot: chunk.data.contextSnapshot
+                  },
+                  loading: false
+                }
+              }
+              return m
+            })
+            setMessages(updated)
           } else if (chunk.type === 'error') {
             throw new Error(chunk.message || "Backend streamed error")
           } else if (chunk.type === 'result') {
@@ -640,6 +683,13 @@ export default function AgentChat() {
             resolved: false,
             options: resData.options
           },
+          loading: false
+        }
+      } else if (resData.type === 'design_decision' && resData.interrupted) {
+        // Design decision was already handled by the chunk handler above
+        // Just ensure loading is off
+        updated[index] = {
+          ...updated[index],
           loading: false
         }
       } else if (resData.isToolCalled) {
@@ -729,7 +779,8 @@ export default function AgentChat() {
       id: userMsgId, 
       role: 'user', 
       text: promptText,
-      image_urls: currentAttachments
+      image_urls: currentAttachments,
+      referencedGarmentIds: referencedGarmentIds
     })
 
     // Add agent thinking placeholder
@@ -912,7 +963,7 @@ export default function AgentChat() {
           styleDnaId: conflictType === 'style_dna' ? option.value : activeStyleDnaId || activeGarment?.style_dna_id || undefined,
           fabricCardId: conflictType === 'fabric' ? option.value : activeFabricCardId || activeGarment?.fabric_card_id || undefined,
           parentVersionId: activeGarment?.id || undefined,
-          referencedGarmentIds: [],
+          referencedGarmentIds: userMsg?.referencedGarmentIds || [],
           projectId,
           displayMode,
           imageGenModel,
@@ -941,6 +992,122 @@ export default function AgentChat() {
             ...m,
             error: true,
             text: `${language === 'zh' ? '设计助手重新提交失败：' : 'Agent resubmission failed: '}${err.message || "An unexpected error occurred."}`,
+            loading: false
+          }
+        }
+        return m
+      })
+      setMessages(finalMsgs)
+    } finally {
+      setChatLoading(false)
+    }
+  }
+
+  const handleSelectDesignDecision = async (
+    messageId: string,
+    option: { id: string; label: string; summary: string; design_strategy: string; prompt_addition: string; value: string }
+  ) => {
+    const currentMessages = useStudioStore.getState().messages
+    const msg = currentMessages.find(m => m.id === messageId)
+    if (!msg || !msg.designDecision) return
+
+    // 1. Find the predecessor user message for original prompt & images
+    const msgIndex = currentMessages.findIndex(m => m.id === messageId)
+    const userMsg = msgIndex > 0 ? currentMessages[msgIndex - 1] : null
+    const originalPrompt = msg.designDecision.contextSnapshot?.originalPrompt || userMsg?.text || ''
+    const originalImageUrls = msg.designDecision.contextSnapshot?.imageUrls || userMsg?.image_urls || []
+
+    setChatLoading(true)
+
+    // 2. Mark decision as resolved locally
+    const newAgentMsgId = crypto.randomUUID()
+    const updatedMessages = useStudioStore.getState().messages.map(m => {
+      if (m.id === messageId && m.designDecision) {
+        return {
+          ...m,
+          designDecision: {
+            ...m.designDecision,
+            resolved: true,
+            selectedOptionLabel: option.label,
+            selectedPromptAddition: option.prompt_addition
+          }
+        }
+      }
+      return m
+    })
+
+    setMessages([
+      ...updatedMessages,
+      {
+        id: newAgentMsgId,
+        role: 'agent' as const,
+        text: language === 'zh'
+          ? `已选择方向: "${option.label}"。正在生成设计，请稍候...`
+          : `Selected direction: "${option.label}". Generating design, please wait...`,
+        loading: true
+      }
+    ])
+
+    // 3. Update decision in DB
+    try {
+      await supabase
+        .from('chat_messages')
+        .update({
+          grounding_metadata: {
+            ...msg.grounding_metadata,
+            resolved: true,
+            selectedOptionLabel: option.label
+          }
+        })
+        .eq('id', messageId)
+    } catch (dbErr) {
+      console.error('Failed to update design decision in DB:', dbErr)
+    }
+
+    // 4. Resubmit with decisionContext
+    try {
+      const snapshot = msg.designDecision.contextSnapshot || {}
+      const response = await fetch('/api/agent/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          prompt: `${originalPrompt}\n\n[设计方向选择: ${option.label}] ${option.prompt_addition}`,
+          styleDnaId: snapshot.activeStyleDnaId || activeStyleDnaId || undefined,
+          fabricCardId: snapshot.activeFabricCardId || activeFabricCardId || undefined,
+          parentVersionId: snapshot.parentVersionId || activeGarment?.id || undefined,
+          referencedGarmentIds: snapshot.referencedGarmentIds || [],
+          projectId,
+          displayMode,
+          imageGenModel,
+          imageUrls: originalImageUrls,
+          stream: true,
+          agentModel: activeProject?.agent_model || 'auto',
+          agentStyle: activeProject?.agent_style || 'default',
+          imageResolution: activeProject?.image_resolution || '1024x1024',
+          agentMessageId: newAgentMsgId,
+          decisionContext: {
+            analysisMarkdown: msg.designDecision.analysisMarkdown,
+            selectedOptionLabel: option.label,
+            selectedPromptAddition: option.prompt_addition
+          }
+        })
+      })
+
+      if (!response.ok) {
+        throw new Error('Design decision resubmission failed.')
+      }
+
+      await readStream(response, newAgentMsgId)
+
+    } catch (err: any) {
+      console.error('Design decision resubmission failed:', err)
+      const latestMessages = useStudioStore.getState().messages
+      const finalMsgs = latestMessages.map(m => {
+        if (m.id === newAgentMsgId) {
+          return {
+            ...m,
+            error: true,
+            text: `${language === 'zh' ? '设计方向提交失败：' : 'Design decision failed: '}${err.message || 'An unexpected error occurred.'}`,
             loading: false
           }
         }
@@ -1084,6 +1251,49 @@ export default function AgentChat() {
                         ))
                       )}
                     </div>
+                  )}
+                </div>
+              ) : msg.role === 'agent' && msg.designDecision ? (
+                <div className="mt-2 border border-amber-500/20 rounded-lg p-3.5 bg-amber-500/5 space-y-3">
+                  <div className="flex items-center space-x-2 text-foreground font-medium text-xs">
+                    <Lightbulb className="w-3.5 h-3.5 text-amber-500 animate-pulse shrink-0" />
+                    <span>{msg.designDecision.question}</span>
+                  </div>
+                  {msg.designDecision.resolved ? (
+                    <div className="flex items-center text-[10px] text-muted-foreground space-x-1.5 bg-background/50 p-2 rounded-md">
+                      <CheckCircle2 className="w-3 h-3 text-green-500 shrink-0" />
+                      <span>
+                        {language === 'zh'
+                          ? `已选用: ${msg.designDecision.selectedOptionLabel}` 
+                          : `Selected: ${msg.designDecision.selectedOptionLabel}`}
+                      </span>
+                    </div>
+                  ) : (
+                    <>
+                      {msg.designDecision.analysisMarkdown && (
+                        <div className="text-xs text-muted-foreground bg-background/30 rounded-md p-2.5 border border-border/50 prose prose-xs dark:prose-invert max-w-none">
+                          <span style={{ whiteSpace: 'pre-wrap' }}>{msg.designDecision.analysisMarkdown}</span>
+                        </div>
+                      )}
+                      <div className="space-y-1.5">
+                        {msg.designDecision.options.map((opt: any) => (
+                          <button
+                            key={opt.id}
+                            type="button"
+                            onClick={() => handleSelectDesignDecision(msg.id, opt)}
+                            className="w-full text-left text-xs bg-background/50 hover:bg-background border border-border hover:border-amber-500/40 rounded-md p-2.5 transition-all duration-200 cursor-pointer text-muted-foreground hover:text-foreground group"
+                          >
+                            <div className="flex justify-between items-center">
+                              <span className="font-medium">{opt.label}</span>
+                              <ChevronRight className="w-3.5 h-3.5 text-muted-foreground group-hover:text-amber-500 transition-colors shrink-0 ml-1.5" />
+                            </div>
+                            {opt.summary && (
+                              <p className="text-[10px] text-muted-foreground/70 mt-1 line-clamp-2">{opt.summary}</p>
+                            )}
+                          </button>
+                        ))}
+                      </div>
+                    </>
                   )}
                 </div>
               ) : msg.role === 'agent' && !msg.loading && (resolvedGarmentCard || resolvedStyleDna || resolvedFabricCard) ? (
