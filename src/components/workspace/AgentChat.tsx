@@ -233,6 +233,7 @@ export default function AgentChat() {
     
     const blocks: React.ReactNode[] = []
     let currentListItems: React.ReactNode[] = []
+    let currentTableLines: string[] = []
 
     const flushList = (key: number) => {
       if (currentListItems.length > 0) {
@@ -245,8 +246,100 @@ export default function AgentChat() {
       }
     }
 
+    const parseTableRow = (row: string): string[] => {
+      return row
+        .replace(/^\|/, '')
+        .replace(/\|$/, '')
+        .split('|')
+        .map(cell => cell.trim())
+    }
+
+    const isSeparatorRow = (row: string): boolean => {
+      return /^\|?[\s\-:]+(\|[\s\-:]+)+\|?$/.test(row.trim())
+    }
+
+    const flushTable = (key: number) => {
+      if (currentTableLines.length < 2) {
+        // Not enough lines for a real table, render as paragraphs
+        currentTableLines.forEach((line, i) => {
+          blocks.push(
+            <p key={`tf-${key}-${i}`} className="text-xs leading-relaxed text-muted-foreground/90 my-2 last:mb-0">
+              {parseInlineElements(line, garments)}
+            </p>
+          )
+        })
+        currentTableLines = []
+        return
+      }
+
+      // Determine header and body rows
+      const headerCells = parseTableRow(currentTableLines[0])
+      let bodyStartIdx = 1
+      // Skip separator row (|---|---|)
+      if (currentTableLines.length > 1 && isSeparatorRow(currentTableLines[1])) {
+        bodyStartIdx = 2
+      }
+      const bodyRows = currentTableLines.slice(bodyStartIdx)
+
+      blocks.push(
+        <div key={`table-${key}`} className="my-3 overflow-x-auto rounded-lg border border-border/40">
+          <table className="w-full text-xs border-collapse">
+            <thead>
+              <tr className="bg-muted/30 border-b border-border/40">
+                {headerCells.map((cell, ci) => (
+                  <th
+                    key={ci}
+                    className="px-3 py-2 text-left font-semibold text-foreground/90 whitespace-nowrap"
+                  >
+                    {parseInlineElements(cell, garments)}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {bodyRows.map((row, ri) => {
+                const cells = parseTableRow(row)
+                return (
+                  <tr
+                    key={ri}
+                    className={`border-b border-border/20 last:border-b-0 ${
+                      ri % 2 === 1 ? 'bg-muted/10' : ''
+                    }`}
+                  >
+                    {cells.map((cell, ci) => (
+                      <td
+                        key={ci}
+                        className="px-3 py-2 text-muted-foreground/90 align-top"
+                      >
+                        {parseInlineElements(cell, garments)}
+                      </td>
+                    ))}
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      )
+      currentTableLines = []
+    }
+
     lines.forEach((line, idx) => {
       const trimmed = line.trim()
+
+      // Table row detection: lines starting with |
+      const isTableLine = trimmed.startsWith('|') && trimmed.includes('|', 1)
+
+      if (isTableLine) {
+        flushList(idx)
+        currentTableLines.push(trimmed)
+        return
+      }
+
+      // If we were collecting table lines but this line isn't a table row, flush
+      if (currentTableLines.length > 0) {
+        flushTable(idx)
+      }
 
       if (trimmed.startsWith('##### ')) {
         flushList(idx)
@@ -289,6 +382,10 @@ export default function AgentChat() {
             {parseInlineElements(trimmed.slice(2), garments)}
           </li>
         )
+      } else if (/^-{3,}$/.test(trimmed) || /^\*{3,}$/.test(trimmed)) {
+        // Horizontal rule: --- or ***
+        flushList(idx)
+        blocks.push(<hr key={idx} className="my-3 border-border/30" />)
       } else if (trimmed === '') {
         flushList(idx)
         blocks.push(<div key={idx} className="h-1.5" />)
@@ -302,7 +399,11 @@ export default function AgentChat() {
       }
     })
 
+    // Flush any remaining collectors
     flushList(lines.length)
+    if (currentTableLines.length > 0) {
+      flushTable(lines.length + 1)
+    }
 
     return <div className="space-y-0.5">{blocks}</div>
   }

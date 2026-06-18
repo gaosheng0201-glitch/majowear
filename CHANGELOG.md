@@ -2,6 +2,32 @@
 
 All notable changes and implementations for the AI Personal Fashion Studio project are documented in this file.
 
+## [2.0.1] - 2026-06-18
+
+### Added
+- **Markdown Table Rendering (`AgentChat.tsx`)**
+  - Extends the existing custom markdown parser with table detection and rendering. Consecutive `|`-prefixed lines are parsed as header/separator/body rows and rendered as styled HTML `<table>` with dark-theme alternating row backgrounds, rounded borders, and `overflow-x-auto` for wide tables.
+  - Table cells fully support existing inline elements: `**bold**` and `@款式` interactive pills.
+  - Also adds `---` / `***` horizontal rule rendering.
+
+### Changed
+- **Intent-Gated Conflict Detection (`route.ts`)**
+  - Moves intent classification (`classifyIntent`) before conflict detection. Only `GENERATE` intent triggers the conflict interceptor; `CHAT`, `SEARCH`, and `CREATE_ASSET` intents skip directly to the agent loop. Prevents comparison/chat requests (e.g., "对比 @A 和 @B") from being incorrectly intercepted by the conflict detector.
+  - Pre-classified intent is passed to the agent loop via `preClassifiedIntent`, eliminating redundant double-classification and saving one API call per request.
+
+- **Conflict Card Expression & Recommendation Quality (`conflictDetector.ts`)**
+  - Adds `fabricSource` parameter (`'direct'` | `'garment'`) to distinguish whether the active fabric was explicitly selected by the user or inherited from the active garment card.
+  - Conflict question now MUST explain WHY there is a conflict (e.g., "当前激活款式用的真丝面料偏软，做硬挺夹克需调整吗？") instead of a generic prompt.
+  - Passes full fabric properties (composition, texture, weight_gsm) to the LLM for better suitability analysis.
+  - Adds strict constraint: every recommended option MUST be suitable for the user's design request. Prohibits recommending fabrics/styles that would create a NEW suitability conflict (e.g., no wetsuit neoprene for structured jackets).
+
+### Fixed
+- **`includeServerSideToolInvocations` API Error (`agentLoop.ts`)**
+  - Adds `toolConfig.includeServerSideToolInvocations: true` when function declarations and built-in tools (Google Search) are mounted simultaneously. Resolves Gemini API 400 error: "Please enable tool_config.include_server_side_tool_invocations to use Built-in tools with Function calling."
+
+- **`thought_signature` Missing Error (`agentLoop.ts`)**
+  - Preserves the model's original response content (`geminiResponse.candidates[0].content.parts`) when feeding `functionResponse` back for multi-round tool execution, instead of manually reconstructing the `functionCall` part. This retains the `thought_signature` required by Gemini thinking models.
+
 ## [2.0.0] - 2026-06-18
 
 ### Added

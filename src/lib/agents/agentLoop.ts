@@ -28,6 +28,7 @@ interface AgentLoopParams {
   isChinese: boolean;
   imageResolution: string;
   agentModel: string;       // User's agent model preference
+  preClassifiedIntent?: WorkflowIntent; // Skip re-classification if already done
 }
 
 /**
@@ -45,13 +46,18 @@ export async function runAgentLoop(params: AgentLoopParams): Promise<AgentLoopRe
   const {
     ctx, systemPrompt, contents, imageParts, imageUrls,
     callbacks, taskId, validAgentMsgId, conflictResolved,
-    isChinese, imageResolution, agentModel
+    isChinese, imageResolution, agentModel, preClassifiedIntent
   } = params;
 
-  // 1. Classify intent
-  callbacks.onStatus('classifying_intent');
+  // 1. Classify intent (skip if already pre-classified in route.ts)
   const userPrompt = ctx.snapshot.originalPrompt;
-  const intent: WorkflowIntent = await classifyIntent(userPrompt);
+  let intent: WorkflowIntent;
+  if (preClassifiedIntent) {
+    intent = preClassifiedIntent;
+  } else {
+    callbacks.onStatus('classifying_intent');
+    intent = await classifyIntent(userPrompt);
+  }
   console.log('[Agent Loop] Classified intent:', intent);
 
   // 2. Select model
@@ -81,13 +87,26 @@ export async function runAgentLoop(params: AgentLoopParams): Promise<AgentLoopRe
   for (let round = 0; round < MAX_ROUNDS; round++) {
     console.log(`[Agent Loop] Round ${round + 1}/${MAX_ROUNDS}`);
 
+    // Check if tools mix function declarations with built-in tools (e.g. googleSearch)
+    const hasFunctionDecls = tools.some((t: any) => t.functionDeclarations);
+    const hasBuiltInTools = tools.some((t: any) => t.googleSearch);
+    const needsServerSideInvocations = hasFunctionDecls && hasBuiltInTools;
+
     const geminiResponse = await ai.models.generateContent({
       model: modelName,
       contents: currentContents,
       config: {
         systemInstruction: systemPrompt,
         thinkingConfig: thinkingConfig,
-        tools: tools.length > 0 ? tools : undefined
+        tools: tools.length > 0 ? tools : undefined,
+        ...(needsServerSideInvocations ? {
+          toolConfig: {
+            functionCallingConfig: {
+              mode: 'AUTO' as any,
+            },
+            includeServerSideToolInvocations: true,
+          }
+        } : {})
       }
     });
 
@@ -183,9 +202,14 @@ export async function runAgentLoop(params: AgentLoopParams): Promise<AgentLoopRe
     }
 
     // Feed result back as functionResponse for next round
+    // IMPORTANT: Preserve the model's original response content (including thought_signature)
+    // to satisfy Gemini thinking model requirements.
+    const modelResponseParts = geminiResponse.candidates?.[0]?.content?.parts || [
+      { functionCall: { name: call.name, args } }
+    ];
     currentContents.push({
       role: 'model',
-      parts: [{ functionCall: { name: call.name, args } }]
+      parts: modelResponseParts
     });
     currentContents.push({
       role: 'user',

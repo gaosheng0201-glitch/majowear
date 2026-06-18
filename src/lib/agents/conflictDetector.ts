@@ -107,24 +107,36 @@ export async function detectAndResolveConflict({
   activeStyleDna,
   projectFabricCards,
   projectStyleDnas,
+  fabricSource,
 }: {
   userPrompt: string;
   activeFabricCard: any;
   activeStyleDna: any;
   projectFabricCards: any[];
   projectStyleDnas: any[];
+  fabricSource?: 'direct' | 'garment';
 }) {
   try {
+    // Build source context explanation
+    let fabricSourceExplanation = '';
+    if (activeFabricCard) {
+      if (fabricSource === 'garment') {
+        fabricSourceExplanation = `(This fabric is inherited from the currently active garment card, not directly selected by the designer. Mention this in the question so the designer understands where the conflict comes from, e.g. "当前激活款式使用的XX面料...")`;
+      } else {
+        fabricSourceExplanation = `(This fabric was directly selected by the designer in the sidebar.)`;
+      }
+    }
+
     const nlpAnalysisPrompt = `
 You are a professional fashion designer. Your task is to analyze the user's design request and identify any semantic references to fabrics or style DNAs. Then, compare them with the active and available presets in the studio workspace to determine if there is a conflict or suitability trade-off.
 
 ---
 ACTIVE WORKSPACE CONTEXT:
-- Active Fabric Card: ${activeFabricCard ? `"${activeFabricCard.name}" (ID: ${activeFabricCard.id})` : "None"}
-- Active Style DNA: ${activeStyleDna ? `"${activeStyleDna.name}" (ID: ${activeStyleDna.id})` : "None"}
+- Active Fabric Card: ${activeFabricCard ? `"${activeFabricCard.name}" (ID: ${activeFabricCard.id}), Composition: ${activeFabricCard.composition}, Texture: ${activeFabricCard.texture}, Weight: ${activeFabricCard.weight_gsm ? `${activeFabricCard.weight_gsm} GSM` : 'N/A'} ${fabricSourceExplanation}` : "None"}
+- Active Style DNA: ${activeStyleDna ? `"${activeStyleDna.name}" (ID: ${activeStyleDna.id}), Keywords: ${(activeStyleDna.keywords || []).join(', ')}` : "None"}
 
 AVAILABLE FABRIC CARDS IN PROJECT:
-${projectFabricCards.map(f => `- "${f.name}" (ID: ${f.id}), Composition: ${f.composition}, Texture: ${f.texture}`).join('\n')}
+${projectFabricCards.map(f => `- "${f.name}" (ID: ${f.id}), Composition: ${f.composition}, Texture: ${f.texture}, Weight: ${f.weight_gsm ? `${f.weight_gsm} GSM` : 'N/A'}`).join('\n')}
 
 AVAILABLE STYLE DNAS IN PROJECT:
 ${projectStyleDnas.map(s => `- "${s.name}" (ID: ${s.id}), Keywords: ${(s.keywords || []).join(', ')}`).join('\n')}
@@ -142,12 +154,17 @@ INSTRUCTIONS & CRITICAL RULES:
 5. DESIGNER DECISION PURPOSE: The purpose of raising a conflict is to respect the designer's creative intent when a design trade-off or suitability conflict is detected, letting them make a deliberate choice.
 6. If "hasConflict" is true:
    - Identify "conflictType" ("fabric", "style_dna").
-   - Generate a brief, natural, professional question in the designer's own tone (under 50 characters) pointing out the suitability conflict or design trade-off and asking for confirmation. Do NOT list the options or alternatives in the question text. Match the language of the user's prompt.
+   - Generate a brief, natural, professional question in the designer's own tone (under 50 characters) pointing out the suitability conflict or design trade-off and asking for confirmation.
+     - The question MUST briefly explain WHY there is a conflict. For example: "当前面料真丝质地偏软，做廓形夹克需调整" or "激活款式的棉麻面料偏休闲，与正装风格不匹配".
+     - If the fabric is inherited from the active garment (not directly selected), mention it: e.g. "当前激活款式用的真丝面料偏软，需要切换吗？"
+     - Do NOT list the options or alternatives in the question text.
+     - Match the language of the user's prompt.
    - Generate 3-5 dynamic options. For each option, set both "id" and "value" to the same string.
+   - CRITICAL: Every recommended option MUST be suitable for the user's design request. Do NOT recommend fabrics/styles that would create a NEW suitability conflict with the requested garment. For example, if the user asks for a structured jacket, do NOT recommend wetsuit neoprene fabric.
    - The options list must consist of:
-     a) Option to retain the active preset (value and id set to the UUID of the active card).
-     b) Options to switch to existing project cards if they are relevant alternatives.
-     c) Optional recommended concept: set value/id to "custom_" followed by lowercase slug.
+     a) Option to retain the active preset (value and id set to the UUID of the active card). The label should acknowledge the trade-off.
+     b) Options to switch to existing project cards ONLY if they are genuinely suitable alternatives for the requested design.
+     c) Optional recommended concept: set value/id to "custom_" followed by lowercase slug. Only recommend if it genuinely fits the design request.
      d) Universal manual input option (MUST always be last): value/id = "custom".
 7. If there is no mismatch, set "hasConflict" to false, "question" to "" and "options" to [].
 `;

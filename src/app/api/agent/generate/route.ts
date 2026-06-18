@@ -186,20 +186,32 @@ export async function POST(request: Request) {
         }
       }
 
-      // 2.5 Perform conflict detection if not already resolved by user
-      if (!conflictResolved) {
+      // 2.5 Pre-classify intent to gate conflict detection
+      // Only GENERATE intent needs conflict detection; CHAT/SEARCH/CREATE_ASSET skip it
+      const { classifyIntent } = await import('@/lib/agents/intentClassifier');
+      const preIntent = await classifyIntent(userPrompt);
+
+      // 2.6 Perform conflict detection only for GENERATE intent
+      if (!conflictResolved && preIntent === 'GENERATE') {
         // Tiered candidate query: project-first, user-global fallback, cap 10
         const [projectFabricCards, projectStyleDnas] = await Promise.all([
           loadFabricCandidates(supabase, user.id, projectId),
           loadStyleDnaCandidates(supabase, user.id, projectId)
         ]);
 
+        // Determine fabric source: inherited from garment or directly selected
+        const fabricSource: 'direct' | 'garment' = (
+          parentGarmentData?.fabric_card_id &&
+          fabricCardData?.id === parentGarmentData.fabric_card_id
+        ) ? 'garment' : 'direct';
+
         const conflictResult = await detectAndResolveConflict({
           userPrompt,
           activeFabricCard: fabricCardData,
           activeStyleDna: styleDnaData,
           projectFabricCards,
-          projectStyleDnas
+          projectStyleDnas,
+          fabricSource
         });
 
         if (conflictResult.hasConflict) {
@@ -331,7 +343,7 @@ export async function POST(request: Request) {
           projectId,
           snapshot: {
             originalPrompt: userPrompt,
-            workflowIntent: 'GENERATE', // Will be overridden by classifier
+            workflowIntent: preIntent,
             parentVersionId,
             referencedGarmentIds: referencedGarmentIds || [],
             imageUrls: imageUrls || [],
@@ -361,6 +373,7 @@ export async function POST(request: Request) {
         isChinese,
         imageResolution,
         agentModel,
+        preClassifiedIntent: preIntent,
       });
 
       // Handle interrupted loop (design decision card sent)
