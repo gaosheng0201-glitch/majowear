@@ -2,6 +2,23 @@
 
 All notable changes and implementations for the AI Personal Fashion Studio project are documented in this file.
 
+## [2.0.2] - 2026-06-19
+
+### Added
+- **LLM-Driven Display Mode Selection (`display_mode` tool parameter)**
+  - Adds `display_mode` as a required enum parameter (`flat_lay` / `on_body` / `sketch`) to the `generate_garment_design` tool schema. The LLM semantically determines the rendering style based on user intent (e.g., "穿在模特身上看看" → `on_body`, "画个草图" → `sketch`), with `flat_lay` as the default fallback.
+
+### Changed
+- **DISPLAY_SPECS Template System (`garmentDesign.ts`)**
+  - Replaces hardcoded `displayMode` prompt suffixes with a `DISPLAY_SPECS` template registry. Each mode defines only structural/compositional constraints (view count, layout, background), not creative direction:
+    - `flat_lay`: 21:9, front+back dual view, white background, flat lay
+    - `on_body`: 4:1, front+side+back triple view, full body (scene/atmosphere fully LLM-driven)
+    - `sketch`: 21:9, front+back dual view, technical illustration, white background
+  - LLM retains full creative freedom for `args.prompt` content: flat_lay focuses on material textures, on_body includes scene atmosphere and lighting, sketch uses technical drawing language.
+  - `prompt` parameter description updated with per-mode creative guidance to prevent prompt-suffix conflicts.
+  - Resolved display mode stored in `garment_cards.schema.displayMode` for frontend viewport cropping compatibility.
+  - Frontend `GarmentCanvas.tsx` requires no changes: `sketch` mode auto-maps to 2-view crop logic (`isMultiView=true`, `isThreeView=false`).
+
 ## [2.0.1] - 2026-06-18
 
 ### Added

@@ -67,21 +67,40 @@ export async function handleGarmentDesign(
     callbacks.onStatus('executing_tool:generate_garment_design', { target: 'garment' });
   }
 
-  // 2. Adjust prompt prefix
+  // 2. Resolve display mode from LLM choice → fallback to ctx.displayMode
+  const DISPLAY_SPECS: Record<string, { suffix: string; aspectRatio: string }> = {
+    flat_lay: {
+      suffix: 'side-by-side double-view split-screen, front view on the left and back view on the right of the same garment, clean solid white background, flat lay composition, soft diffused ambient light, micro-texture details visible',
+      aspectRatio: '21:9',
+    },
+    on_body: {
+      suffix: 'three-view split-screen, front view, side view, and back view of the model wearing the garment, full body shot',
+      aspectRatio: '4:1',
+    },
+    sketch: {
+      suffix: 'side-by-side double-view fashion design sketch, front view on the left and back view on the right, technical fashion illustration, pencil line drawing style, clean white background',
+      aspectRatio: '21:9',
+    },
+  };
+
+  // Map LLM's display_mode to resolved spec (with fallback)
+  const llmDisplayMode = args.display_mode || '';
+  const resolvedMode = DISPLAY_SPECS[llmDisplayMode]
+    ? llmDisplayMode
+    : (displayMode === 'on_body' ? 'on_body' : 'flat_lay');
+  const spec = DISPLAY_SPECS[resolvedMode];
+
+  // 3. Adjust prompt prefix (editing / sketch-to-photo)
   if (editBaseImagePart) {
     finalPrompt = `Using the provided base fashion design image as a reference, change only the details specified: ${finalPrompt}. Keep all other parts of the garment, background, and lighting completely unchanged.`;
-  } else if (imageParts?.length > 0) {
+  } else if (imageParts?.length > 0 && resolvedMode !== 'sketch') {
     finalPrompt = `Turn the provided sketch/design image into a polished fashion product photography, strictly following the silhouette and lines: ${finalPrompt}`;
   }
 
-  // 3. Display mode suffix
-  if (displayMode === 'white_background') {
-    finalPrompt += `, side-by-side double-view split-screen in 21:9 aspect ratio showing front view on the left and back view on the right of the same garment, professional studio fashion product photography, clean solid white background, flat lay composition, soft diffused ambient light, micro-texture details visible, high-end commercial aesthetic`;
-  } else {
-    finalPrompt += `, three-view split-screen in 4:1 aspect ratio showing front view, side view, and back view of the model wearing the garment, professional fashion editorial photoshoot, full body shot, natural light, soft focus background, organic texture, high-end fashion magazine look`;
-  }
+  // 4. Append display spec suffix (format constraints only, not creative direction)
+  finalPrompt += `, ${spec.suffix}`;
 
-  // 4. Generate image
+  // 5. Generate image
   let generatedImageBuffer: Buffer;
   let mimeType = 'image/png';
   let sizeVal: '1K' | '2K' | '4K' = '1K';
@@ -104,7 +123,7 @@ export async function handleGarmentDesign(
         config: {
           responseModalities: ['IMAGE'],
           imageConfig: {
-            aspectRatio: displayMode === 'white_background' ? '21:9' : '4:1',
+            aspectRatio: spec.aspectRatio as any,
             imageSize: sizeVal
           }
         }
@@ -122,7 +141,7 @@ export async function handleGarmentDesign(
         config: {
           numberOfImages: 1,
           outputMimeType: 'image/png',
-          aspectRatio: displayMode === 'white_background' ? '21:9' : '4:1',
+          aspectRatio: spec.aspectRatio as any,
         },
       });
       const base64ImageBytes = imageGenResponse.generatedImages?.[0]?.image?.imageBytes;
@@ -192,7 +211,7 @@ export async function handleGarmentDesign(
         closures: args.closures,
         details: args.details || [],
         review,
-        displayMode
+        displayMode: resolvedMode
       },
       prompt: finalPrompt,
       negative_prompt: args.negative_prompt,

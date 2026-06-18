@@ -10,8 +10,9 @@ export const generateGarmentTool = {
       title: { type: Type.STRING, description: 'Descriptive title of the garment' },
       category: { type: Type.STRING, description: 'Category of the clothing (e.g., Jacket, Pants, Shirt, Dress, Knitwear)' },
       design_rationale: { type: Type.STRING, description: 'Explanation of the design concept, style choices (silhouettes, cuts, aesthetic details), and how they harmonize with the style DNA and fabric properties' },
-      prompt: { type: Type.STRING, description: 'Optimized English prompt for the image generation model. Describe styling, fit, collar, sleeves, closure, pockets, details.' },
+      prompt: { type: Type.STRING, description: 'Optimized English prompt for the image generation model. For flat_lay: focus on garment materials, textures, and construction details only — no models, poses, or backgrounds. For on_body: freely describe model styling, scene atmosphere, lighting, and background to convey the design language. For sketch: use technical drawing language describing structure and pattern — no photorealistic descriptions.' },
       negative_prompt: { type: Type.STRING, description: 'English negative prompt' },
+      display_mode: { type: Type.STRING, description: 'Rendering style. "flat_lay" (default): professional product photography on white background, front+back dual view. "on_body": editorial photoshoot with model, front+side+back triple view. "sketch": technical fashion illustration on white background, front+back dual view.' },
       fit: { type: Type.STRING, description: 'e.g. Oversized, Slim, Cropped, Regular' },
       collar: { type: Type.STRING, description: 'e.g. Hooded, Band collar, Notch lapel' },
       sleeves: { type: Type.STRING, description: 'e.g. Raglan long sleeves, Sleeveless' },
@@ -28,9 +29,9 @@ export const generateGarmentTool = {
       review_suggested_revision: { type: Type.STRING, description: 'A refinement prompt suggestion' }
     },
     required: [
-      'title', 'category', 'design_rationale', 'prompt', 'fit', 'collar',
+      'title', 'category', 'design_rationale', 'prompt', 'display_mode', 'fit', 'collar',
       'sleeves', 'pockets', 'closures', 'details',
-      'is_new_design',  // Added to required
+      'is_new_design',
       'review_style_match_score', 'review_fabric_match_score',
       'review_structure_clarity_score', 'review_prompt_compliance_score',
       'review_issues', 'review_suggested_revision'
